@@ -1,0 +1,40 @@
+{
+  "cards": [
+    {
+      "id": "1",
+      "name": "عيدية 50 ريال",
+      "type": "eidiya",
+      "description": "مبروك! ربحت عيدية 50 ريال 🎉"
+    },
+    {
+      "id": "2",
+      "name": "تحدي الشجاعة",
+      "type": "challenge",
+      "description": "قول سر ما قلته لأحد قبل كذا 😱"
+    },
+    {
+      "id": "3",
+      "name": "عقاب الميوت",
+      "type": "punishment",
+      "description": "ميوت 5 دقائق في الروم 🔇"
+    },
+    {
+      "id": "4",
+      "name": "بطاقة غامضة",
+      "type": "mystery",
+      "description": "المسؤول يحدد مصيرك... 🔮"
+    },
+    {
+      "id": "5",
+      "name": "جوكر",
+      "type": "joker",
+      "description": "اختر شخص يسحب بدلك! 🃏"
+    },
+    {
+      "id": "6",
+      "name": "مبادلة",
+      "type": "swap",
+      "description": "بادل بطاقتك مع شخص ثاني! 🔄"
+    }
+  ]
+}
