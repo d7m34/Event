@@ -109,7 +109,7 @@ let gameState = {
 
 // التحقق من صلاحيات الأدمن
 function isAdmin(userId) {
-    return userId === config.ownerId || config.admins.includes(userId);
+    return userId === process.env.OWNER_ID || config.admins.includes(userId);
 }
 
 // خلط المصفوفة عشوائياً (Fisher-Yates)
@@ -586,12 +586,12 @@ async function registerCommands() {
             .setDescription('❓ عرض معلومات البوت والأوامر')
     ];
 
-    const rest = new REST({ version: '10' }).setToken(config.token);
+    const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
 
     try {
         console.log('📝 جاري تسجيل الأوامر...');
         await rest.put(
-            Routes.applicationGuildCommands(config.clientId, config.guildId),
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
             { body: commands.map(c => c.toJSON()) }
         );
         console.log('✅ تم تسجيل الأوامر بنجاح!');
@@ -846,7 +846,7 @@ async function handleButton(interaction) {
 
     } else if (customId === 'admin_manage_admins') {
         // ─── إدارة المسؤولين ───
-        if (interaction.user.id !== config.ownerId) {
+        if (interaction.user.id !== process.env.OWNER_ID) {
             return interaction.reply({ content: '❌ فقط مالك البوت يقدر يدير المسؤولين!', ephemeral: true });
         }
 
@@ -1447,7 +1447,7 @@ async function handleSelectMenu(interaction) {
             });
 
         } else if (action === 'list_admins') {
-            let adminList = `👑 **المالك:** <@${config.ownerId}>\n\n`;
+            let adminList = `👑 **المالك:** <@${process.env.OWNER_ID}>\n\n`;
 
             if (config.admins.length > 0) {
                 adminList += '👥 **المسؤولين:**\n';
@@ -1695,7 +1695,7 @@ async function handleModal(interaction) {
             return interaction.reply({ content: '❌ هذا المسؤول موجود بالفعل!', ephemeral: true });
         }
 
-        if (adminId === config.ownerId) {
+        if (adminId === process.env.OWNER_ID) {
             return interaction.reply({ content: '❌ هذا هو مالك البوت!', ephemeral: true });
         }
 
@@ -1836,7 +1836,7 @@ client.on('guildMemberRemove', async (member) => {
         try {
             const adminChannel = await client.channels.fetch(config.adminChannelId);
             if (adminChannel) {
-                const nextAdmin = config.admins.length > 0 ? config.admins[0] : config.ownerId;
+                const nextAdmin = config.admins.length > 0 ? config.admins[0] : process.env.OWNER_ID;
                 await adminChannel.send({
                     embeds: [
                         new EmbedBuilder()
@@ -1876,7 +1876,7 @@ client.on('guildMemberRemove', async (member) => {
 // 🚀 تشغيل البوت
 // ═══════════════════════════════════════════════════════════════
 console.log('🎴 جاري تشغيل Card Roulette...');
-client.login(config.token).catch(err => {
+client.login(process.env.BOT_TOKEN).catch(err => {
     console.error('❌ فشل تسجيل الدخول:', err.message);
-    console.log('📝 تأكد من صحة التوكن في config.json');
+    console.log('📝 تأكد من صحة BOT_TOKEN في متغيرات البيئة');
 });
