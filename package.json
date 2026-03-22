@@ -1,1 +1,12 @@
-
+{
+  "name": "card-roulette",
+  "version": "1.0.0",
+  "description": "بوت روليت البطاقات لديسكورد",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1"
+  }
+}
