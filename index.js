@@ -578,14 +578,17 @@ async function playDrawAnimation(channel, playerName) {
 async function registerCommands() {
     const commands = [
         new SlashCommandBuilder()
-            .setName('بدأ')
+            .setName('بدء')
             .setDescription('🎴 بدء فعالية روليت البطاقات'),
         new SlashCommandBuilder()
             .setName('لوحة')
             .setDescription('🎛️ فتح لوحة تحكم الأدمن'),
         new SlashCommandBuilder()
             .setName('مساعدة')
-            .setDescription('❓ عرض معلومات البوت والأوامر')
+            .setDescription('❓ عرض معلومات البوت والأوامر'),
+        new SlashCommandBuilder()
+            .setName('إعادة')
+            .setDescription('🔄 إعادة تعيين حالة اللعبة')
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
@@ -677,7 +680,7 @@ client.on('interactionCreate', async (interaction) => {
 async function handleSlashCommand(interaction) {
     const { commandName } = interaction;
 
-    if (commandName === 'بدأ') {
+    if (commandName === 'بدء') {
         // ─── أمر بدء الفعالية ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ هذا الأمر للمسؤولين فقط!', ephemeral: true });
@@ -742,6 +745,19 @@ async function handleSlashCommand(interaction) {
             .setFooter({ text: config.botBio || 'Card Roulette Bot' });
 
         await interaction.reply({ embeds: [helpEmbed], ephemeral: true });
+
+    } else if (commandName === 'إعادة') {
+        if (!isAdmin(interaction.user.id)) {
+            return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
+        }
+        clearExecutionTimer();
+        gameState.active = false;
+        gameState.phase = 'idle';
+        gameState.players = [];
+        gameState.gameMessage = null;
+        gameState.registrationMessage = null;
+        gameState.timerInterval = null;
+        await interaction.reply({ content: '✅ تم إعادة تعيين اللعبة! استخدم /بدء لبدء جولة جديدة.', ephemeral: true });
     }
 }
 
