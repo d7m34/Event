@@ -1,1 +1,16 @@
+{
+  "adminChannelId": "",
+  "admins": [],
+  "botName": "Card Roulette",
+  "botStatus": "🎴 روليت البطاقات",
+  "botBio": "بوت فعاليات البطاقات العشوائية",
+  "gameSettings": {
+    "cardCount": 30,
+    "muteMode": false,
+    "executionTimer": 60,
+    "dmReminder": true,
+    "showStats": true,
+    "eventDescription": "🎴 فعالية روليت البطاقات!\nكل لاعب يسحب بطاقة عشوائية وينفذ اللي فيها.\nالحظ يحدد مصيرك! 🎲"
+  }
+}
 
