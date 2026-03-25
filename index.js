@@ -40,7 +40,9 @@ let gameState = {
     active: false, paused: false, phase: 'idle', players: [], currentPlayerIndex: 0,
     availableCards: [], drawnCards: [], doubleMode: false, gameChannel: null,
     gameMessage: null, registrationMessage: null, timerInterval: null, adminPanelMessage: null,
-    currentPlayerDrew: false, initialEidiyaCount: 0
+    currentPlayerDrew: false, initialEidiyaCount: 0,
+    // ═══ جديد: تتبع رسالة التحدي للأدمن ═══
+    challengeAdminMessage: null, pendingChallengePlayer: null, pendingChallengeCard: null
 };
 
 let broadcastState = {
@@ -262,14 +264,11 @@ function clearExecutionTimer() { if (gameState.timerInterval) { clearInterval(ga
 async function moveToNextPlayer() {
     clearExecutionTimer();
 
-    // اللاعب الحالي سحب بطاقته — نشيله من القائمة
     if (gameState.currentPlayerDrew && gameState.players.length > 0) {
         gameState.players.splice(gameState.currentPlayerIndex, 1);
-        // نعدّل الـ index بعد الحذف
         if (gameState.players.length === 0) { await endGame(); return; }
         if (gameState.currentPlayerIndex >= gameState.players.length) gameState.currentPlayerIndex = 0;
     } else {
-        // ما سحب (تخطي) — ننتقل للتالي بدون حذف
         gameState.currentPlayerIndex++;
         if (gameState.currentPlayerIndex >= gameState.players.length) gameState.currentPlayerIndex = 0;
     }
@@ -289,7 +288,6 @@ async function moveToNextPlayer() {
 async function skipToNextPlayer() {
     if (!gameState.active || !gameState.gameChannel) return;
     try { const sp = gameState.players[gameState.currentPlayerIndex]; await gameState.gameChannel.send({ embeds: [new EmbedBuilder().setDescription(`تم تخطي <@${sp.id}> — انتهى الوقت!`).setColor(0x95A5A6)] }); } catch (e) { }
-    // التخطي — اللاعب ما سحب، نتركه بالقائمة وننتقل
     gameState.currentPlayerDrew = false;
     clearExecutionTimer();
     gameState.currentPlayerIndex++;
@@ -309,6 +307,84 @@ async function endGame() {
     if (gameState.gameChannel) { try { await gameState.gameChannel.send(buildSummaryEmbed()); } catch (e) { } }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 🆕 نظام التحدي — لما يسحب اللاعب تحدي يظهر للأدمن زرين
+// ═══════════════════════════════════════════════════════════════
+
+async function handleChallengeResult(channel, player, card) {
+    // نحفظ بيانات التحدي الحالي
+    gameState.pendingChallengePlayer = player;
+    gameState.pendingChallengeCard = card;
+
+    const cardTitle = card.emoji ? `${card.emoji} ${card.name}` : card.name;
+
+    const embed = new EmbedBuilder()
+        .setTitle('⚔️ تحدي — انتظار حكم الأدمن')
+        .setDescription(`**اللاعب:** <@${player.id}>\n**التحدي:** ${cardTitle}\n\n${card.description}\n\n━━━━━━━━━━━━━━━━━━\nهل نجح اللاعب في التحدي؟`)
+        .setColor(0x3498DB)
+        .setFooter({ text: 'هذه الرسالة للأدمن فقط' })
+        .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('challenge_success').setLabel('✅ نجح — ينتقل للعيديات').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('challenge_fail').setLabel('❌ فشل — اقصاء').setStyle(ButtonStyle.Danger)
+    );
+
+    // نرسل للأدمن بشكل سري (ephemeral مو ممكن هنا لأنه مو رد interaction)
+    // نرسل في قناة الأدمن
+    try {
+        const adminChannel = await client.channels.fetch(config.adminChannelId);
+        if (adminChannel) {
+            gameState.challengeAdminMessage = await adminChannel.send({ embeds: [embed], components: [row] });
+        }
+    } catch (e) {
+        console.error('❌ خطأ في إرسال رسالة التحدي للأدمن:', e.message);
+    }
+}
+
+async function giveEidiyaToPlayer(channel, player) {
+    const eidiyaCards = gameState.availableCards.filter(c => c.type === 'eidiya');
+
+    // لو ما في عيديات
+    if (eidiyaCards.length === 0) {
+        await channel.send({
+            embeds: [new EmbedBuilder()
+                .setTitle('🎉 نجحت في التحدي!')
+                .setDescription(`<@${player.id}> نجح في التحدي! 🏆\n\nللأسف العيديات نفذت — شكراً على مشاركتك وحياك في فعالية قادمة! 🌟`)
+                .setColor(0x2ECC71)
+                .setFooter({ text: 'روليت البطاقات' })
+                .setTimestamp()]
+        });
+        return;
+    }
+
+    // نسحب عيدية عشوائية
+    const randomIndex = Math.floor(Math.random() * eidiyaCards.length);
+    const eidiyaCard = eidiyaCards[randomIndex];
+
+    // نشغّل أنيميشن العجلة للعيدية
+    await playDrawAnimation(channel, player.displayName || player.username, 'eidiya');
+
+    // نحذف العيدية من availableCards وmن cards.json
+    gameState.availableCards = gameState.availableCards.filter(c => c.id !== eidiyaCard.id);
+    const oi = cardsData.cards.findIndex(c => c.id === eidiyaCard.id);
+    if (oi !== -1) { cardsData.cards.splice(oi, 1); saveCards(); }
+
+    // نضيفها لسجل السحبات
+    gameState.drawnCards.push({ playerId: player.id, playerName: player.displayName || player.username, card: eidiyaCard, timestamp: Date.now() });
+
+    // رسالة آخر عيدية لو خلصت
+    const remainingAfter = gameState.availableCards.filter(c => c.type === 'eidiya').length;
+    if (remainingAfter === 0 && gameState.initialEidiyaCount > 0) {
+        try {
+            await channel.send({ embeds: [new EmbedBuilder().setTitle('🔥 آخر عيدية تم سحبها!').setDescription(`<@${player.id}> حصل على **آخر عيدية** متبقية!\nما فيه عيديات بعد كذا 😱`).setColor(0xFF6B6B).setFooter({ text: 'روليت البطاقات' })] });
+        } catch (e) { }
+    }
+
+    // نعرض بطاقة العيدية
+    await channel.send({ embeds: [buildCardEmbed(eidiyaCard, player.displayName || player.username)] });
+}
+
 async function playPlayerRouletteAnimation(channel, players, resultIndex) {
     const resultPlayer = players[resultIndex];
     function buildRow(highlightIdx) {
@@ -318,7 +394,7 @@ async function playPlayerRouletteAnimation(channel, players, resultIndex) {
     const animMsg = await channel.send({ embeds: [new EmbedBuilder().setTitle('عجلة الاختيار تدور...').setDescription(`من سيكون اللاعب التالي؟\n\n${buildRow(0)}\n\n▲  ▲  ▲`).setColor(0x2F3136).setFooter({ text: 'روليت البطاقات' })] });
     for (let i = 0; i < 10; i++) { await delay(200); try { await animMsg.edit({ embeds: [new EmbedBuilder().setTitle('عجلة الاختيار تدور...').setDescription(`من سيكون اللاعب التالي؟\n\n${buildRow(i)}\n\n▲  ▲  ▲`).setColor(0x2F3136).setFooter({ text: 'روليت البطاقات' })] }); } catch(e) {} }
     const slowSpeeds = [350, 500, 700, 900, 1100];
-    for (let s = 0; s < slowSpeeds.length; s++) { await delay(slowSpeeds[s]); try { await animMsg.edit({ embeds: [new EmbedBuilder().setTitle('العجلة تتباطأ...').setDescription(`من سيكون اللاعب التالي؟\n\n${buildRow(10 + s)}\n\n▲  ▲  ▲`).setColor(0x5865F2).setFooter({ text: 'روليت البطاقات' })] }); } catch(e) {} }
+    for (let s = 0; s < slowSpeeds.length; s++) { await delay(slowSpeeds[s]); try { await animMsg.edit({ embeds: [new EmbedBuilder().setTitle('العجلة تتباطأ...').setDescription(`من سيكون اللاعب التالي؟\n\n${buildRow(10 + s)}\n\n▲  ▲  ▲`).setColor(0x2F3136).setFooter({ text: 'روليت البطاقات' })] }); } catch(e) {} }
     await delay(600);
     try { await animMsg.edit({ embeds: [new EmbedBuilder().setTitle('تم الاختيار!').setDescription(`**${resultPlayer.displayName || resultPlayer.username}**\n\nهذا دوره الآن — دوّر عجلة البطاقة!`).setColor(0xFFD700).setFooter({ text: 'روليت البطاقات' })] }); } catch(e) {}
     await delay(800); return animMsg;
@@ -396,7 +472,7 @@ async function handleSlashCommand(interaction) {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         if (gameState.active) return interaction.reply({ content: '❌ فيه لعبة شغالة!', ephemeral: true });
         if (cardsData.cards.length === 0) return interaction.reply({ content: '❌ لا توجد بطاقات!', ephemeral: true });
-        gameState = { ...gameState, active: true, paused: false, phase: 'registration', players: [], currentPlayerIndex: 0, availableCards: [], drawnCards: [], doubleMode: false, gameChannel: interaction.channel, gameMessage: null, registrationMessage: null, timerInterval: null, currentPlayerDrew: false, initialEidiyaCount: 0 };
+        gameState = { ...gameState, active: true, paused: false, phase: 'registration', players: [], currentPlayerIndex: 0, availableCards: [], drawnCards: [], doubleMode: false, gameChannel: interaction.channel, gameMessage: null, registrationMessage: null, timerInterval: null, currentPlayerDrew: false, initialEidiyaCount: 0, challengeAdminMessage: null, pendingChallengePlayer: null, pendingChallengeCard: null };
         await interaction.reply(buildRegistrationEmbed(interaction.guild));
         gameState.registrationMessage = await interaction.fetchReply();
     } else if (commandName === 'لوحة') {
@@ -406,7 +482,7 @@ async function handleSlashCommand(interaction) {
         await interaction.reply({ embeds: [new EmbedBuilder().setTitle('❓ مساعدة Card Roulette').setDescription('بوت فعاليات البطاقات العشوائية').setColor(0x3498DB).addFields({ name: '🎴 `/بدء`', value: 'بدء فعالية جديدة', inline: true }, { name: '🎛️ `/لوحة`', value: 'لوحة التحكم', inline: true }, { name: '🎨 `/ايموجي`', value: 'تعيين إيموجي لبطاقة', inline: true }, { name: '❓ `/مساعدة`', value: 'هذه الرسالة', inline: true }, { name: '🎴 أنواع البطاقات', value: Object.values(CARD_TYPES).map(t => `**${t.label}**`).join('\n'), inline: false }).setFooter({ text: config.botBio || 'Card Roulette Bot' })], ephemeral: true });
     } else if (commandName === 'إعادة') {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
-        clearExecutionTimer(); gameState.active = false; gameState.phase = 'idle'; gameState.players = []; gameState.gameMessage = null; gameState.registrationMessage = null; gameState.timerInterval = null; gameState.currentPlayerDrew = false;
+        clearExecutionTimer(); gameState.active = false; gameState.phase = 'idle'; gameState.players = []; gameState.gameMessage = null; gameState.registrationMessage = null; gameState.timerInterval = null; gameState.currentPlayerDrew = false; gameState.challengeAdminMessage = null; gameState.pendingChallengePlayer = null; gameState.pendingChallengeCard = null;
         await interaction.reply({ content: '✅ تم إعادة تعيين اللعبة!', ephemeral: true });
     } else if (commandName === 'ايموجي') {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
@@ -425,7 +501,42 @@ async function handleSlashCommand(interaction) {
 
 async function handleButton(interaction) {
     const id = interaction.customId;
-    if (id === 'admin_add_card') {
+
+    // ═══ جديد: زري التحدي (نجح / فشل) ═══
+    if (id === 'challenge_success') {
+        if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
+        if (!gameState.pendingChallengePlayer || !gameState.pendingChallengeCard) return interaction.reply({ content: '❌ ما في تحدي معلّق!', ephemeral: true });
+
+        const player = gameState.pendingChallengePlayer;
+        await interaction.update({ embeds: [new EmbedBuilder().setTitle('✅ نجح اللاعب!').setDescription(`<@${player.id}> نجح في التحدي — جاري سحب عيديته...`).setColor(0x2ECC71)], components: [] });
+
+        // نعطيه عيدية عشوائية
+        await giveEidiyaToPlayer(gameState.gameChannel, player);
+
+        // ننهي دوره
+        gameState.pendingChallengePlayer = null;
+        gameState.pendingChallengeCard = null;
+        gameState.currentPlayerDrew = true;
+        await updateGameMessage();
+
+    } else if (id === 'challenge_fail') {
+        if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
+        if (!gameState.pendingChallengePlayer || !gameState.pendingChallengeCard) return interaction.reply({ content: '❌ ما في تحدي معلّق!', ephemeral: true });
+
+        const player = gameState.pendingChallengePlayer;
+        await interaction.update({ embeds: [new EmbedBuilder().setTitle('❌ فشل اللاعب').setDescription(`<@${player.id}> فشل في التحدي — تم اقصاؤه`).setColor(0xE74C3C)], components: [] });
+
+        // رسالة في قناة اللعبة
+        try {
+            await gameState.gameChannel.send({ embeds: [new EmbedBuilder().setTitle('❌ فشل التحدي').setDescription(`<@${player.id}> فشل في التحدي وتم اقصاؤه من الجولة`).setColor(0xE74C3C).setFooter({ text: 'روليت البطاقات' })] });
+        } catch (e) { }
+
+        gameState.pendingChallengePlayer = null;
+        gameState.pendingChallengeCard = null;
+        gameState.currentPlayerDrew = true;
+        await updateGameMessage();
+
+    } else if (id === 'admin_add_card') {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         await interaction.reply({ content: '🎴 اختر نوع البطاقة:', components: [new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_card_type_for_add').setPlaceholder('اختر نوع البطاقة...').addOptions(Object.entries(CARD_TYPES).map(([k, t]) => ({ label: t.label, value: k, description: `إضافة بطاقة ${t.label}` }))))], ephemeral: true });
     } else if (id === 'admin_view_cards') {
@@ -517,34 +628,42 @@ async function handleButton(interaction) {
         await interaction.deferUpdate(); clearExecutionTimer();
         const dc = gameState.availableCards.pop();
 
-        // إذا كانت آخر عيدية — رسالة خاصة
         if (dc.type === 'eidiya') {
             const remainingEidiyaAfter = gameState.availableCards.filter(c => c.type === 'eidiya').length;
             if (remainingEidiyaAfter === 0 && getRemainingEidiyaCount() <= 1) {
                 try { await gameState.gameChannel.send({ embeds: [new EmbedBuilder().setTitle('🔥 آخر عيدية تم سحبها!').setDescription(`<@${cp.id}> حصل على **آخر عيدية** متبقية!\nما فيه عيديات بعد كذا 😱`).setColor(0xFF6B6B).setFooter({ text: 'روليت البطاقات' })] }); } catch (e) { }
             }
-        }
-
-        // العيديات تُحذف نهائياً — التحديات والعقوبات ترجع
-        if (dc.type === 'eidiya') {
-            // العيدية تُحذف من cards.json نهائياً
+            // العيدية تُحذف نهائياً
             const oi = cardsData.cards.findIndex(c => c.id === dc.id);
             if (oi !== -1) { cardsData.cards.splice(oi, 1); saveCards(); }
-        } else {
-            // التحدي أو العقوبة — نرجعها لـ availableCards عشان تتكرر
+            gameState.drawnCards.push({ playerId: cp.id, playerName: cp.displayName || cp.username, card: dc, timestamp: Date.now() });
+            const am = await playDrawAnimation(interaction.channel, cp.displayName || cp.username, dc.type);
+            try { await am.edit({ embeds: [buildCardEmbed(dc, cp.displayName || cp.username)], components: [] }); } catch (e) { }
+            gameState.currentPlayerDrew = true;
+            await updateGameMessage();
+
+        } else if (dc.type === 'punishment') {
+            // العقوبة ترجع للقائمة
             gameState.availableCards.unshift(dc);
             gameState.availableCards = shuffleArray(gameState.availableCards);
+            gameState.drawnCards.push({ playerId: cp.id, playerName: cp.displayName || cp.username, card: dc, timestamp: Date.now() });
+            const am = await playDrawAnimation(interaction.channel, cp.displayName || cp.username, dc.type);
+            try { await am.edit({ embeds: [buildCardEmbed(dc, cp.displayName || cp.username)], components: [] }); } catch (e) { }
+            gameState.currentPlayerDrew = true;
+            await updateGameMessage();
+
+        } else if (dc.type === 'challenge') {
+            // ═══ جديد: التحدي — يعرض البطاقة في الشات ويرسل زري الحكم للأدمن ═══
+            gameState.availableCards.unshift(dc);
+            gameState.availableCards = shuffleArray(gameState.availableCards);
+            gameState.drawnCards.push({ playerId: cp.id, playerName: cp.displayName || cp.username, card: dc, timestamp: Date.now() });
+            const am = await playDrawAnimation(interaction.channel, cp.displayName || cp.username, dc.type);
+            try { await am.edit({ embeds: [buildCardEmbed(dc, cp.displayName || cp.username)], components: [] }); } catch (e) { }
+            // نرسل زري الحكم لقناة الأدمن
+            await handleChallengeResult(gameState.gameChannel, cp, dc);
+            // ما نعلّم currentPlayerDrew هنا — الأدمن هو اللي يقرر
         }
 
-        gameState.drawnCards.push({ playerId: cp.id, playerName: cp.displayName || cp.username, card: dc, timestamp: Date.now() });
-
-        const am = await playDrawAnimation(interaction.channel, cp.displayName || cp.username, dc.type);
-        const embeds = [buildCardEmbed(dc, cp.displayName || cp.username)];
-        try { await am.edit({ embeds, components: [] }); } catch (e) { }
-
-        // اللاعب سحب بطاقته — نعلّم إنه سحب
-        gameState.currentPlayerDrew = true;
-        await updateGameMessage();
     } else if (id === 'game_next') {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين!', ephemeral: true });
         if (gameState.phase !== 'playing') return interaction.reply({ content: '❌ غير شغالة!', ephemeral: true });
@@ -567,7 +686,7 @@ async function handleButton(interaction) {
         await interaction.deferUpdate(); await endGame();
     } else if (id === 'game_new_round') {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين!', ephemeral: true });
-        gameState = { ...gameState, active: true, paused: false, phase: 'registration', players: [], currentPlayerIndex: 0, availableCards: [], drawnCards: [], doubleMode: false, gameChannel: interaction.channel, timerInterval: null, currentPlayerDrew: false, initialEidiyaCount: 0 };
+        gameState = { ...gameState, active: true, paused: false, phase: 'registration', players: [], currentPlayerIndex: 0, availableCards: [], drawnCards: [], doubleMode: false, gameChannel: interaction.channel, timerInterval: null, currentPlayerDrew: false, initialEidiyaCount: 0, challengeAdminMessage: null, pendingChallengePlayer: null, pendingChallengeCard: null };
         await interaction.update(buildRegistrationEmbed(interaction.guild)); gameState.registrationMessage = await interaction.fetchReply();
     }
 }
