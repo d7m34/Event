@@ -8,6 +8,6 @@
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "canvas": "^2.11.2"
+    "skia-canvas": "^1.0.2"
   }
 }
