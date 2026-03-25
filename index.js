@@ -252,19 +252,18 @@ function buildRegistrationEmbed(guild) {
         embed.setThumbnail(guild.iconURL({ size: 256 }));
     }
 
-    // أزرار التسجيل
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('game_join')
-            .setLabel('🙋 انضم')
+            .setLabel('انضم')
             .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
             .setCustomId('game_leave')
-            .setLabel('🚪 انسحب')
+            .setLabel('انسحب')
             .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('game_start')
-            .setLabel('🚀 ابدأ اللعبة')
+            .setLabel('ابدأ اللعبة')
             .setStyle(ButtonStyle.Primary)
     );
 
@@ -282,34 +281,34 @@ function buildPlayerTurnEmbed() {
     const total = config.gameSettings.cardCount;
 
     const embed = new EmbedBuilder()
-        .setTitle(`🎴 دور اللاعب`)
-        .setDescription(`<@${currentPlayer.id}>\n\nاسحب بطاقتك الآن! 🃏`)
+        .setTitle(`دور اللاعب`)
+        .setDescription(`<@${currentPlayer.id}>\n\nاسحب البطاقة الآن وادر العجلة`)
         .setColor(0x3498DB)
         .addFields(
             {
-                name: '📊 التقدم',
+                name: 'التقدم',
                 value: `تبقى **${remaining}/${total}** بطاقة`,
                 inline: true
             },
             {
-                name: '🎯 الدور',
+                name: 'الدور',
                 value: `**${gameState.currentPlayerIndex + 1}/${gameState.players.length}**`,
                 inline: true
             },
             {
-                name: '⏱️ المؤقت',
+                name: 'المؤقت',
                 value: `**${config.gameSettings.executionTimer}** ثانية`,
                 inline: true
             }
         )
-        .setFooter({ text: gameState.doubleMode ? '⚡ وضع الضغط المضاعف مفعّل!' : 'Card Roulette' })
+        .setFooter({ text: gameState.doubleMode ? 'وضع الضغط المضاعف مفعّل!' : 'روليت البطاقات' })
         .setTimestamp();
 
     // أزرار اللاعب
     const playerRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('game_draw')
-            .setLabel('🎴 اسحب بطاقة')
+            .setLabel('دوّر العجلة')
             .setStyle(ButtonStyle.Primary)
     );
 
@@ -317,23 +316,23 @@ function buildPlayerTurnEmbed() {
     const adminRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('game_next')
-            .setLabel('✅ التالي')
+            .setLabel('التالي')
             .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
             .setCustomId('game_skip')
-            .setLabel('⏭️ تخطي')
+            .setLabel('تخطي')
             .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('game_pause')
-            .setLabel(gameState.paused ? '▶️ استمرار' : '⏸️ إيقاف')
+            .setLabel(gameState.paused ? 'استمرار' : 'ايقاف')
             .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('game_double')
-            .setLabel(gameState.doubleMode ? '✖️ إلغاء x2' : 'x2 مضاعف')
+            .setLabel(gameState.doubleMode ? 'الغاء x2' : 'x2 مضاعف')
             .setStyle(gameState.doubleMode ? ButtonStyle.Danger : ButtonStyle.Primary),
         new ButtonBuilder()
             .setCustomId('game_end')
-            .setLabel('🛑 إنهاء')
+            .setLabel('انهاء')
             .setStyle(ButtonStyle.Danger)
     );
 
@@ -346,15 +345,25 @@ function buildPlayerTurnEmbed() {
 function buildCardEmbed(card, playerName) {
     const cardType = CARD_TYPES[card.type] || CARD_TYPES.mystery;
 
+    // شرح واضح لنوع البطاقة
+    const typeDescriptions = {
+        eidiya:     'حصلت على عيدية — شيء ايجابي لك!',
+        challenge:  'تحدي — عليك تنفيذ هذا التحدي!',
+        punishment: 'عقوبة — عليك تنفيذ هذه العقوبة!',
+        mystery:    'بطاقة غامضة — مفاجأة!',
+        joker:      'جوكر — اختر شخص يسحب بدلك!',
+        swap:       'مبادلة — بادل بطاقتك مع شخص آخر!',
+    };
+
     const embed = new EmbedBuilder()
-        .setTitle(`${cardType.emoji} ${card.name}`)
-        .setDescription(card.description)
+        .setTitle(card.name)
+        .setDescription(`**${typeDescriptions[card.type] || ''}**\n\n${card.description}`)
         .setColor(cardType.color)
         .addFields(
-            { name: '🎴 النوع', value: cardType.name, inline: true },
-            { name: '👤 اللاعب', value: playerName, inline: true }
+            { name: 'النوع', value: cardType.label, inline: true },
+            { name: 'اللاعب', value: playerName, inline: true }
         )
-        .setFooter({ text: 'Card Roulette 🎲' })
+        .setFooter({ text: 'روليت البطاقات' })
         .setTimestamp();
 
     return embed;
@@ -371,7 +380,7 @@ function buildSummaryEmbed() {
     }
 
     const embed = new EmbedBuilder()
-        .setTitle('🏆 انتهت الجولة — الملخص')
+        .setTitle('انتهت الجولة — الملخص')
         .setColor(0xFFD700)
         .addFields(
             {
@@ -407,7 +416,7 @@ function buildSummaryEmbed() {
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('game_new_round')
-            .setLabel('🔄 جولة جديدة')
+            .setLabel('جولة جديدة')
             .setStyle(ButtonStyle.Success)
     );
 
@@ -463,13 +472,21 @@ async function moveToNextPlayer() {
         gameState.currentPlayerIndex = 0;
     }
 
+    // روليت اللاعبين — تدور وتوقف على اللاعب التالي
+    if (gameState.gameChannel) {
+        await playPlayerRouletteAnimation(
+            gameState.gameChannel,
+            gameState.players,
+            gameState.currentPlayerIndex
+        );
+    }
+
     // تحديث رسالة اللعبة
     const turnData = buildPlayerTurnEmbed();
     if (turnData && gameState.gameMessage) {
         try {
             await gameState.gameMessage.edit(turnData);
         } catch (e) {
-            // لو الرسالة انحذفت نرسل وحدة جديدة
             if (gameState.gameChannel) {
                 gameState.gameMessage = await gameState.gameChannel.send(turnData);
             }
@@ -509,7 +526,7 @@ async function skipToNextPlayer() {
         await gameState.gameChannel.send({
             embeds: [
                 new EmbedBuilder()
-                    .setDescription(`⏭️ تم تخطي <@${skippedPlayer.id}> — انتهى الوقت!`)
+                    .setDescription(`تم تخطي <@${skippedPlayer.id}> — انتهى الوقت!`)
                     .setColor(0x95A5A6)
             ]
         });
@@ -535,40 +552,165 @@ async function endGame() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 🎬 أنيميشن سحب البطاقة (3-5 ثواني)
+// روليت 1 — اختيار اللاعب التالي
 // ═══════════════════════════════════════════════════════════════
-async function playDrawAnimation(channel, playerName) {
-    const frames = [
-        '🎴 جاري السحب .',
-        '🎴 جاري السحب . .',
-        '🎴 جاري السحب . . .',
-        '🃏 البطاقة طلعت...',
-    ];
+async function playPlayerRouletteAnimation(channel, players, resultIndex) {
+    const resultPlayer = players[resultIndex];
+    const visible = players.slice(0, Math.min(players.length, 5));
+
+    function buildPlayerRow(highlightIdx) {
+        return visible.map((p, i) => {
+            const name = p.displayName || p.username;
+            return i === highlightIdx % visible.length
+                ? `**[ ${name} ]**`
+                : name;
+        }).join('  —  ');
+    }
 
     const animMsg = await channel.send({
         embeds: [
             new EmbedBuilder()
-                .setTitle(frames[0])
+                .setTitle('عجلة الاختيار تدور...')
+                .setDescription(`من سيكون اللاعب التالي؟\n\n${buildPlayerRow(0)}\n\n▲  ▲  ▲`)
                 .setColor(0x2F3136)
-                .setDescription(`🎲 ${playerName} يسحب بطاقة...`)
+                .setFooter({ text: 'روليت البطاقات' })
         ]
     });
 
-    for (let i = 1; i < frames.length; i++) {
-        await delay(1000);
+    // إطارات سريعة
+    for (let i = 0; i < 10; i++) {
+        await delay(200);
         try {
             await animMsg.edit({
                 embeds: [
                     new EmbedBuilder()
-                        .setTitle(frames[i])
-                        .setColor(i === frames.length - 1 ? 0xFFD700 : 0x2F3136)
-                        .setDescription(`🎲 ${playerName} يسحب بطاقة...`)
+                        .setTitle('عجلة الاختيار تدور...')
+                        .setDescription(`من سيكون اللاعب التالي؟\n\n${buildPlayerRow(i)}\n\n▲  ▲  ▲`)
+                        .setColor(0x2F3136)
+                        .setFooter({ text: 'روليت البطاقات' })
                 ]
             });
         } catch (e) { }
     }
 
-    await delay(1000);
+    // تبطؤ تدريجي
+    const slowSpeeds = [350, 500, 700, 900, 1100];
+    for (let s = 0; s < slowSpeeds.length; s++) {
+        await delay(slowSpeeds[s]);
+        try {
+            await animMsg.edit({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('العجلة تتباطأ...')
+                        .setDescription(`من سيكون اللاعب التالي؟\n\n${buildPlayerRow(10 + s)}\n\n▲  ▲  ▲`)
+                        .setColor(0x5865F2)
+                        .setFooter({ text: 'روليت البطاقات' })
+                ]
+            });
+        } catch (e) { }
+    }
+
+    // النتيجة
+    await delay(600);
+    try {
+        await animMsg.edit({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('تم الاختيار!')
+                    .setDescription(`**[ ${resultPlayer.displayName || resultPlayer.username} ]**\n\nهذا دوره الآن — دوّر عجلة البطاقة!`)
+                    .setColor(0xFFD700)
+                    .setFooter({ text: 'روليت البطاقات' })
+            ]
+        });
+    } catch (e) { }
+
+    await delay(800);
+    return animMsg;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// روليت 2 — اختيار نوع البطاقة
+// ═══════════════════════════════════════════════════════════════
+async function playDrawAnimation(channel, playerName, resultType) {
+    const segColors = { eidiya: '🟡', challenge: '🔵', punishment: '🔴', mystery: '⚪', joker: '🟢', swap: '🟠' };
+    const segLabels = { eidiya: 'عيدية', challenge: 'تحدي', punishment: 'عقوبة', mystery: 'غامضة', joker: 'جوكر', swap: 'مبادلة' };
+    const allTypes = ['eidiya', 'challenge', 'punishment'];
+
+    function buildCardRow(highlightType) {
+        return allTypes.map(t =>
+            t === highlightType
+                ? `**[ ${segColors[t]} ${segLabels[t]} ]**`
+                : `${segColors[t]} ${segLabels[t]}`
+        ).join('  —  ');
+    }
+
+    const animMsg = await channel.send({
+        embeds: [
+            new EmbedBuilder()
+                .setTitle('عجلة البطاقة تدور...')
+                .setDescription(`${playerName} يدور العجلة\n\n${buildCardRow('eidiya')}\n\n▲  ▲  ▲`)
+                .setColor(0x2F3136)
+                .setFooter({ text: 'روليت البطاقات' })
+        ]
+    });
+
+    // إطارات سريعة
+    const fastSeq = ['eidiya', 'challenge', 'punishment', 'eidiya', 'challenge', 'punishment', 'eidiya', 'challenge'];
+    for (const pos of fastSeq) {
+        await delay(300);
+        try {
+            await animMsg.edit({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('عجلة البطاقة تدور...')
+                        .setDescription(`${playerName} يدور العجلة\n\n${buildCardRow(pos)}\n\n▲  ▲  ▲`)
+                        .setColor(0x2F3136)
+                        .setFooter({ text: 'روليت البطاقات' })
+                ]
+            });
+        } catch (e) { }
+    }
+
+    // تبطؤ تدريجي ينتهي عند النتيجة
+    const resultIdx = allTypes.indexOf(resultType) !== -1 ? allTypes.indexOf(resultType) : 0;
+    const slowPath = [
+        allTypes[(resultIdx + 1) % 3],
+        allTypes[(resultIdx + 2) % 3],
+        allTypes[resultIdx]
+    ];
+    const slowSpeeds = [600, 900, 1200];
+
+    for (let i = 0; i < slowPath.length; i++) {
+        await delay(slowSpeeds[i]);
+        try {
+            await animMsg.edit({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('العجلة تتباطأ...')
+                        .setDescription(`${playerName} يدور العجلة\n\n${buildCardRow(slowPath[i])}\n\n▲  ▲  ▲`)
+                        .setColor(0x5865F2)
+                        .setFooter({ text: 'روليت البطاقات' })
+                ]
+            });
+        } catch (e) { }
+    }
+
+    // النتيجة النهائية
+    const resultInfo = CARD_TYPES[resultType] || CARD_TYPES.mystery;
+    await delay(600);
+    try {
+        await animMsg.edit({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('توقفت العجلة!')
+                    .setDescription(`${playerName}\n\n**${segColors[resultType] || '⚪'} ${segLabels[resultType] || resultType}**`)
+                    .setColor(resultInfo.color)
+                    .setFooter({ text: 'روليت البطاقات' })
+            ]
+        });
+    } catch (e) { }
+
+    await delay(800);
     return animMsg;
 }
 
@@ -1086,12 +1228,19 @@ async function handleButton(interaction) {
         await interaction.update({
             embeds: [
                 new EmbedBuilder()
-                    .setTitle('🎮 اللعبة بدأت!')
-                    .setDescription(`👥 **${gameState.players.length}** لاعب\n🎴 **${gameState.availableCards.length}** بطاقة`)
+                    .setTitle('اللعبة بدأت!')
+                    .setDescription(`عدد اللاعبين: **${gameState.players.length}**\nعدد البطاقات: **${gameState.availableCards.length}**`)
                     .setColor(0x2ECC71)
             ],
             components: []
         });
+
+        // روليت اختيار اللاعب الأول
+        await playPlayerRouletteAnimation(
+            interaction.channel,
+            gameState.players,
+            gameState.currentPlayerIndex
+        );
 
         // إرسال embed الدور الأول
         const turnData = buildPlayerTurnEmbed();
@@ -1126,14 +1275,15 @@ async function handleButton(interaction) {
         await interaction.deferUpdate();
         clearExecutionTimer();
 
-        // أنيميشن السحب
+        // سحب البطاقة أولاً عشان العجلة تعرف النتيجة
+        const drawnCard = gameState.availableCards.pop();
+
+        // تشغيل عجلة الروليت بالنتيجة الصحيحة
         const animMsg = await playDrawAnimation(
             interaction.channel,
-            currentPlayer.displayName || currentPlayer.username
+            currentPlayer.displayName || currentPlayer.username,
+            drawnCard.type
         );
-
-        // سحب البطاقة
-        const drawnCard = gameState.availableCards.pop();
 
         // حذف البطاقة من البيانات الأصلية
         const originalIndex = cardsData.cards.findIndex(c => c.id === drawnCard.id);
@@ -1279,7 +1429,7 @@ async function handleButton(interaction) {
             await interaction.channel.send({
                 embeds: [
                     new EmbedBuilder()
-                        .setTitle('⏸️ اللعبة متوقفة مؤقتاً')
+                        .setTitle('اللعبة متوقفة مؤقتاً')
                         .setColor(0xF39C12)
                 ]
             });
@@ -1288,7 +1438,7 @@ async function handleButton(interaction) {
             await interaction.channel.send({
                 embeds: [
                     new EmbedBuilder()
-                        .setTitle('▶️ اللعبة مستمرة!')
+                        .setTitle('اللعبة مستمرة!')
                         .setColor(0x2ECC71)
                 ]
             });
