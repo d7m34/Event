@@ -1,5 +1,3 @@
-
-
 // ═══════════════════════════════════════════════════════════════
 // 🎴 بوت Card Roulette - روليت البطاقات
 // بوت ديسكورد متكامل لفعاليات البطاقات العشوائية
@@ -66,41 +64,33 @@ const CARD_TYPES = {
     }
 };
 
-// ─── إيموجي النوع من config أو افتراضي ───
-function getTypeEmoji(type) {
-    const defaults = { eidiya: '🎁', challenge: '⚡', punishment: '💀' };
-    return config.emojis?.[type] || defaults[type] || '🎴';
-}
-
 // ═══════════════════════════════════════════════════════════════
 // 🎮 متغيرات حالة اللعبة
 // ═══════════════════════════════════════════════════════════════
 let gameState = {
-    active: false,          // هل اللعبة شغالة؟
-    paused: false,          // هل اللعبة متوقفة مؤقتاً؟
-    phase: 'idle',          // idle / registration / playing / ended
-    players: [],            // قائمة اللاعبين المسجلين
-    currentPlayerIndex: 0,  // مؤشر اللاعب الحالي
-    availableCards: [],     // البطاقات المتوفرة للسحب
-    drawnCards: [],         // البطاقات المسحوبة (للإحصائيات)
-    doubleMode: false,      // وضع الضغط المضاعف
-    gameChannel: null,      // قناة اللعبة
-    gameMessage: null,      // رسالة اللعبة الرئيسية
-    registrationMessage: null, // رسالة التسجيل
-    timerInterval: null,    // مؤقت التنفيذ
-    adminPanelMessage: null // رسالة لوحة الأدمن
+    active: false,
+    paused: false,
+    phase: 'idle',
+    players: [],
+    currentPlayerIndex: 0,
+    availableCards: [],
+    drawnCards: [],
+    doubleMode: false,
+    gameChannel: null,
+    gameMessage: null,
+    registrationMessage: null,
+    timerInterval: null,
+    adminPanelMessage: null
 };
 
 // ═══════════════════════════════════════════════════════════════
 // 🔧 دوال مساعدة
 // ═══════════════════════════════════════════════════════════════
 
-// التحقق من صلاحيات الأدمن
 function isAdmin(userId) {
     return userId === process.env.OWNER_ID || config.admins.includes(userId);
 }
 
-// خلط المصفوفة عشوائياً (Fisher-Yates)
 function shuffleArray(array) {
     const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -110,21 +100,34 @@ function shuffleArray(array) {
     return shuffled;
 }
 
-// توليد ID فريد
 function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 }
 
-// تأخير
 function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🔍 استخراج أول إيموجي من نص
+// ═══════════════════════════════════════════════════════════════
+function extractEmoji(text) {
+    // أولاً: إيموجي مخصص (custom emoji) عادي أو متحرك
+    const customMatch = text.match(/<a?:\w+:\d+>/);
+    if (customMatch) return customMatch[0];
+
+    // ثانياً: إيموجي Unicode
+    const emojiRegex = /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F))*/u;
+    const unicodeMatch = text.match(emojiRegex);
+    if (unicodeMatch) return unicodeMatch[0];
+
+    return null;
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 📋 بناء لوحة الأدمن (Embed + أزرار)
 // ═══════════════════════════════════════════════════════════════
 function buildAdminPanel() {
-    // الـ Embed الرئيسي للوحة الأدمن
     const embed = new EmbedBuilder()
         .setTitle('🎴 لوحة تحكم Card Roulette')
         .setDescription('تحكم كامل بالبوت والبطاقات والإعدادات')
@@ -146,7 +149,7 @@ function buildAdminPanel() {
                 name: 'أنواع البطاقات',
                 value: Object.entries(CARD_TYPES).map(([key, t]) => {
                     const count = cardsData.cards.filter(c => c.type === key).length;
-                    return `${getTypeEmoji(key)} ${t.label}: **${count}**`;
+                    return `${t.label}: **${count}**`;
                 }).join('\n'),
                 inline: true
             }
@@ -186,12 +189,8 @@ function buildAdminPanel() {
             .setStyle(ButtonStyle.Secondary)
     );
 
-    // ─── صف أزرار إضافي ───
+    // ─── صف أزرار إضافي (بدون زر الإيموجيات) ───
     const extraRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('admin_manage_emojis')
-            .setLabel('إيموجيات السيرفر')
-            .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
             .setCustomId('admin_refresh_panel')
             .setLabel('تحديث اللوحة')
@@ -235,7 +234,6 @@ function buildRegistrationEmbed(guild) {
         .setFooter({ text: 'اضغط "انضم" للتسجيل في الفعالية!' })
         .setTimestamp();
 
-    // إضافة banner السيرفر لو موجود
     if (guild && guild.bannerURL()) {
         embed.setImage(guild.bannerURL({ size: 1024 }));
     } else if (guild && guild.iconURL()) {
@@ -294,7 +292,6 @@ function buildPlayerTurnEmbed() {
         .setFooter({ text: gameState.doubleMode ? 'وضع الضغط المضاعف مفعّل!' : 'روليت البطاقات' })
         .setTimestamp();
 
-    // أزرار اللاعب
     const playerRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('game_draw')
@@ -302,7 +299,6 @@ function buildPlayerTurnEmbed() {
             .setStyle(ButtonStyle.Primary)
     );
 
-    // أزرار المسؤول
     const adminRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('game_next')
@@ -330,23 +326,22 @@ function buildPlayerTurnEmbed() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 🎴 بناء Embed البطاقة المسحوبة
+// 🎴 بناء Embed البطاقة المسحوبة (مع دعم card.emoji)
 // ═══════════════════════════════════════════════════════════════
 function buildCardEmbed(card, playerName) {
-    const cardType = CARD_TYPES[card.type] || CARD_TYPES.mystery;
+    const cardType = CARD_TYPES[card.type] || CARD_TYPES.punishment;
 
-    // شرح واضح لنوع البطاقة
     const typeDescriptions = {
         eidiya:     'حصلت على عيدية — شيء ايجابي لك!',
         challenge:  'تحدي — عليك تنفيذ هذا التحدي!',
-        punishment: 'عقوبة — عليك تنفيذ هذه العقوبة!',
-        mystery:    'بطاقة غامضة — مفاجأة!',
-        joker:      'جوكر — اختر شخص يسحب بدلك!',
-        swap:       'مبادلة — بادل بطاقتك مع شخص آخر!',
+        punishment: 'عقوبة — عليك تنفيذ هذه العقوبة!'
     };
 
+    // استخدام card.emoji قبل اسم البطاقة إن كان موجوداً
+    const cardTitle = card.emoji ? `${card.emoji} ${card.name}` : card.name;
+
     const embed = new EmbedBuilder()
-        .setTitle(card.name)
+        .setTitle(cardTitle)
         .setDescription(`**${typeDescriptions[card.type] || ''}**\n\n${card.description}`)
         .setColor(cardType.color)
         .addFields(
@@ -364,7 +359,6 @@ function buildCardEmbed(card, playerName) {
 // ═══════════════════════════════════════════════════════════════
 function buildSummaryEmbed() {
     const stats = {};
-    // حساب الإحصائيات لكل نوع
     for (const type of Object.keys(CARD_TYPES)) {
         stats[type] = gameState.drawnCards.filter(c => c.card.type === type).length;
     }
@@ -377,7 +371,7 @@ function buildSummaryEmbed() {
                 name: '📊 إحصائيات البطاقات',
                 value: Object.entries(stats)
                     .filter(([, count]) => count > 0)
-                    .map(([type, count]) => `${CARD_TYPES[type].emoji} ${CARD_TYPES[type].label}: **${count}**`)
+                    .map(([type, count]) => `${CARD_TYPES[type].label}: **${count}**`)
                     .join('\n') || 'لا توجد بطاقات مسحوبة',
                 inline: true
             },
@@ -394,11 +388,13 @@ function buildSummaryEmbed() {
         )
         .setTimestamp();
 
-    // إضافة تفاصيل كل سحبة
     if (gameState.drawnCards.length > 0) {
         const details = gameState.drawnCards
-            .slice(-15)  // آخر 15 سحبة
-            .map((d, i) => `\`${i + 1}\` <@${d.playerId}> ← ${CARD_TYPES[d.card.type]?.emoji || '❓'} **${d.card.name}**`)
+            .slice(-15)
+            .map((d, i) => {
+                const emojiPrefix = d.card.emoji ? `${d.card.emoji} ` : '❓ ';
+                return `\`${i + 1}\` <@${d.playerId}> ← ${emojiPrefix}**${d.card.name}**`;
+            })
             .join('\n');
         embed.addFields({ name: '📜 آخر السحبات', value: details, inline: false });
     }
@@ -414,10 +410,9 @@ function buildSummaryEmbed() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ⏱️ مؤقت التنفيذ — لو انتهى يتخطى تلقائي
+// ⏱️ مؤقت التنفيذ
 // ═══════════════════════════════════════════════════════════════
 function startExecutionTimer() {
-    // إلغاء أي مؤقت سابق
     clearExecutionTimer();
 
     if (!config.gameSettings.executionTimer || config.gameSettings.executionTimer <= 0) return;
@@ -429,7 +424,6 @@ function startExecutionTimer() {
 
         if (timeLeft <= 0) {
             clearExecutionTimer();
-            // تخطي تلقائي
             await skipToNextPlayer();
         }
     }, 1000);
@@ -448,21 +442,17 @@ function clearExecutionTimer() {
 async function moveToNextPlayer() {
     clearExecutionTimer();
 
-    // التحقق من وجود بطاقات
     if (gameState.availableCards.length === 0) {
         await endGame();
         return;
     }
 
-    // الانتقال للاعب التالي
     gameState.currentPlayerIndex++;
 
-    // لو وصلنا لآخر لاعب نرجع من البداية
     if (gameState.currentPlayerIndex >= gameState.players.length) {
         gameState.currentPlayerIndex = 0;
     }
 
-    // روليت اللاعبين — تدور وتوقف على اللاعب التالي
     if (gameState.gameChannel) {
         await playPlayerRouletteAnimation(
             gameState.gameChannel,
@@ -471,7 +461,6 @@ async function moveToNextPlayer() {
         );
     }
 
-    // تحديث رسالة اللعبة
     const turnData = buildPlayerTurnEmbed();
     if (turnData && gameState.gameMessage) {
         try {
@@ -483,10 +472,8 @@ async function moveToNextPlayer() {
         }
     }
 
-    // تشغيل المؤقت
     startExecutionTimer();
 
-    // إرسال DM تذكير لو مفعّل
     if (config.gameSettings.dmReminder) {
         const currentPlayer = gameState.players[gameState.currentPlayerIndex];
         try {
@@ -499,9 +486,7 @@ async function moveToNextPlayer() {
                         .setColor(0xFFD700)
                 ]
             });
-        } catch (e) {
-            // المستخدم مقفل الـ DM
-        }
+        } catch (e) { }
     }
 }
 
@@ -644,7 +629,6 @@ async function playDrawAnimation(channel, playerName, resultType) {
     return animMsg;
 }
 
-
 // ═══════════════════════════════════════════════════════════════
 // 📝 تسجيل الأوامر Slash
 // ═══════════════════════════════════════════════════════════════
@@ -661,7 +645,17 @@ async function registerCommands() {
             .setDescription('❓ عرض معلومات البوت والأوامر'),
         new SlashCommandBuilder()
             .setName('إعادة')
-            .setDescription('🔄 إعادة تعيين حالة اللعبة')
+            .setDescription('🔄 إعادة تعيين حالة اللعبة'),
+        new SlashCommandBuilder()
+            .setName('ايموجي')
+            .setDescription('🎨 تعيين إيموجي لبطاقة معينة')
+            .addStringOption(option =>
+                option
+                    .setName('بطاقة')
+                    .setDescription('اختر البطاقة التي تريد تعيين إيموجي لها')
+                    .setRequired(true)
+                    .setAutocomplete(true)
+            )
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
@@ -684,26 +678,21 @@ async function registerCommands() {
 client.once('ready', async () => {
     console.log(`✅ البوت شغال: ${client.user.tag}`);
 
-    // تعيين الستاتس
     client.user.setActivity(config.botStatus || '🎴 روليت البطاقات', {
         type: ActivityType.Playing
     });
 
-    // تسجيل الأوامر
     await registerCommands();
 
-    // إرسال لوحة الأدمن في القناة المخصصة
     try {
         const adminChannel = await client.channels.fetch(config.adminChannelId);
         if (adminChannel) {
-            // حذف الرسائل القديمة للبوت
             const messages = await adminChannel.messages.fetch({ limit: 10 });
             const botMessages = messages.filter(m => m.author.id === client.user.id);
             for (const [, msg] of botMessages) {
                 try { await msg.delete(); } catch (e) { }
             }
 
-            // إرسال اللوحة الجديدة
             const panel = buildAdminPanel();
             gameState.adminPanelMessage = await adminChannel.send(panel);
             console.log('📋 تم إرسال لوحة الأدمن');
@@ -718,8 +707,12 @@ client.once('ready', async () => {
 // ═══════════════════════════════════════════════════════════════
 client.on('interactionCreate', async (interaction) => {
     try {
+        // ─── Autocomplete للأمر /ايموجي ───
+        if (interaction.isAutocomplete()) {
+            await handleAutocomplete(interaction);
+        }
         // ─── أوامر Slash ───
-        if (interaction.isChatInputCommand()) {
+        else if (interaction.isChatInputCommand()) {
             await handleSlashCommand(interaction);
         }
         // ─── أزرار ───
@@ -748,13 +741,35 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// 🔍 التعامل مع Autocomplete
+// ═══════════════════════════════════════════════════════════════
+async function handleAutocomplete(interaction) {
+    if (interaction.commandName === 'ايموجي') {
+        const focusedValue = interaction.options.getFocused().toLowerCase();
+
+        const filtered = cardsData.cards
+            .filter(card => card.name.toLowerCase().includes(focusedValue))
+            .slice(0, 25)
+            .map(card => {
+                const typeLabel = CARD_TYPES[card.type]?.label || card.type;
+                const emojiIndicator = card.emoji ? `${card.emoji} ` : '';
+                return {
+                    name: `${emojiIndicator}${card.name} (${typeLabel})`.substring(0, 100),
+                    value: card.id
+                };
+            });
+
+        await interaction.respond(filtered);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 🔧 التعامل مع أوامر Slash
 // ═══════════════════════════════════════════════════════════════
 async function handleSlashCommand(interaction) {
     const { commandName } = interaction;
 
     if (commandName === 'بدء') {
-        // ─── أمر بدء الفعالية ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ هذا الأمر للمسؤولين فقط!', ephemeral: true });
         }
@@ -763,12 +778,10 @@ async function handleSlashCommand(interaction) {
             return interaction.reply({ content: '❌ فيه لعبة شغالة بالفعل!', ephemeral: true });
         }
 
-        // التحقق من وجود بطاقات كافية
         if (cardsData.cards.length === 0) {
             return interaction.reply({ content: '❌ لا توجد بطاقات! أضف بطاقات من لوحة الأدمن أولاً.', ephemeral: true });
         }
 
-        // تجهيز اللعبة
         gameState = {
             ...gameState,
             active: true,
@@ -785,13 +798,11 @@ async function handleSlashCommand(interaction) {
             timerInterval: null
         };
 
-        // إرسال embed التسجيل
         const regData = buildRegistrationEmbed(interaction.guild);
         await interaction.reply(regData);
         gameState.registrationMessage = await interaction.fetchReply();
 
     } else if (commandName === 'لوحة') {
-        // ─── أمر فتح لوحة الأدمن ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ هذا الأمر للمسؤولين فقط!', ephemeral: true });
         }
@@ -800,18 +811,18 @@ async function handleSlashCommand(interaction) {
         await interaction.reply({ ...panel, ephemeral: true });
 
     } else if (commandName === 'مساعدة') {
-        // ─── أمر المساعدة ───
         const helpEmbed = new EmbedBuilder()
             .setTitle('❓ مساعدة Card Roulette')
             .setDescription('بوت فعاليات البطاقات العشوائية')
             .setColor(0x3498DB)
             .addFields(
-                { name: '🎴 `/بدأ`', value: 'بدء فعالية جديدة (للمسؤولين)', inline: true },
+                { name: '🎴 `/بدء`', value: 'بدء فعالية جديدة (للمسؤولين)', inline: true },
                 { name: '🎛️ `/لوحة`', value: 'فتح لوحة التحكم (للمسؤولين)', inline: true },
+                { name: '🎨 `/ايموجي`', value: 'تعيين إيموجي لبطاقة (للمسؤولين)', inline: true },
                 { name: '❓ `/مساعدة`', value: 'عرض هذه الرسالة', inline: true },
                 {
                     name: '🎴 أنواع البطاقات',
-                    value: Object.values(CARD_TYPES).map(t => `${t.emoji} **${t.label}**`).join('\n'),
+                    value: Object.values(CARD_TYPES).map(t => `**${t.label}**`).join('\n'),
                     inline: false
                 }
             )
@@ -831,6 +842,68 @@ async function handleSlashCommand(interaction) {
         gameState.registrationMessage = null;
         gameState.timerInterval = null;
         await interaction.reply({ content: '✅ تم إعادة تعيين اللعبة! استخدم /بدء لبدء جولة جديدة.', ephemeral: true });
+
+    } else if (commandName === 'ايموجي') {
+        // ─── أمر /ايموجي — تعيين إيموجي لبطاقة ───
+        if (!isAdmin(interaction.user.id)) {
+            return interaction.reply({ content: '❌ هذا الأمر للمسؤولين فقط!', ephemeral: true });
+        }
+
+        const cardId = interaction.options.getString('بطاقة');
+
+        // البحث عن البطاقة
+        const card = cardsData.cards.find(c => c.id === cardId);
+        if (!card) {
+            return interaction.reply({ content: '❌ لم يتم العثور على البطاقة! تأكد من اختيار بطاقة صحيحة.', ephemeral: true });
+        }
+
+        const currentEmoji = card.emoji ? ` (الإيموجي الحالي: ${card.emoji})` : '';
+
+        await interaction.reply({
+            content: `🎨 أرسل الإيموجي الذي تريده للبطاقة **${card.name}**${currentEmoji}\n\n⏱️ عندك **30 ثانية** لإرسال الإيموجي...`,
+            ephemeral: true
+        });
+
+        // انتظار رسالة من نفس المستخدم في نفس القناة
+        const filter = (msg) => msg.author.id === interaction.user.id;
+
+        try {
+            const collected = await interaction.channel.awaitMessages({
+                filter,
+                max: 1,
+                time: 30000,
+                errors: ['time']
+            });
+
+            const message = collected.first();
+            const emoji = extractEmoji(message.content);
+
+            // حذف رسالة المستخدم لتنظيف القناة
+            try { await message.delete(); } catch (e) { }
+
+            if (!emoji) {
+                return interaction.followUp({
+                    content: '❌ لم يتم العثور على إيموجي في رسالتك! أرسل إيموجي صحيح (Unicode أو إيموجي سيرفر).',
+                    ephemeral: true
+                });
+            }
+
+            // حفظ الإيموجي على البطاقة
+            card.emoji = emoji;
+            saveCards();
+
+            await interaction.followUp({
+                content: `✅ تم تحديث إيموجي البطاقة **${card.name}** إلى ${emoji}`,
+                ephemeral: true
+            });
+
+        } catch (err) {
+            // انتهى الوقت
+            await interaction.followUp({
+                content: '⏱️ انتهى الوقت! لم يتم تعيين إيموجي. استخدم الأمر مرة ثانية.',
+                ephemeral: true
+            });
+        }
     }
 }
 
@@ -845,7 +918,6 @@ async function handleButton(interaction) {
     // ══════════════════════════════════
 
     if (customId === 'admin_add_card') {
-        // ─── إضافة بطاقة — أول خطوة: اختيار النوع ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
@@ -857,7 +929,6 @@ async function handleButton(interaction) {
                 Object.entries(CARD_TYPES).map(([key, type]) => ({
                     label: type.label,
                     value: key,
-                    emoji: type.emoji,
                     description: `إضافة بطاقة من نوع ${type.label}`
                 }))
             );
@@ -870,7 +941,6 @@ async function handleButton(interaction) {
         });
 
     } else if (customId === 'admin_view_cards') {
-        // ─── عرض البطاقات ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
@@ -879,29 +949,29 @@ async function handleButton(interaction) {
             return interaction.reply({ content: '📦 لا توجد بطاقات حالياً!', ephemeral: true });
         }
 
-        // تقسيم البطاقات حسب النوع
         const embeds = [];
         for (const [typeKey, typeInfo] of Object.entries(CARD_TYPES)) {
             const typeCards = cardsData.cards.filter(c => c.type === typeKey);
             if (typeCards.length === 0) continue;
 
             const embed = new EmbedBuilder()
-                .setTitle(`${typeInfo.emoji} بطاقات ${typeInfo.label} (${typeCards.length})`)
+                .setTitle(`بطاقات ${typeInfo.label} (${typeCards.length})`)
                 .setColor(typeInfo.color)
                 .setDescription(
-                    typeCards.map((c, i) => `\`${i + 1}\` **${c.name}**\n└ ${c.description}`).join('\n\n')
+                    typeCards.map((c, i) => {
+                        const emojiPrefix = c.emoji ? `${c.emoji} ` : '';
+                        return `\`${i + 1}\` ${emojiPrefix}**${c.name}**\n└ ${c.description}`;
+                    }).join('\n\n')
                 );
             embeds.push(embed);
         }
 
-        // إرسال حتى 10 embeds (حد ديسكورد)
         await interaction.reply({
             embeds: embeds.slice(0, 10),
             ephemeral: true
         });
 
     } else if (customId === 'admin_delete_card') {
-        // ─── حذف بطاقة ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
@@ -910,13 +980,11 @@ async function handleButton(interaction) {
             return interaction.reply({ content: '📦 لا توجد بطاقات للحذف!', ephemeral: true });
         }
 
-        // إنشاء قائمة اختيار بالبطاقات (حد 25)
         const options = cardsData.cards.slice(0, 25).map(card => {
-            const typeInfo = CARD_TYPES[card.type] || CARD_TYPES.mystery;
+            const typeInfo = CARD_TYPES[card.type] || {};
             return {
                 label: card.name.substring(0, 100),
                 value: card.id,
-                emoji: typeInfo.emoji,
                 description: card.description.substring(0, 100)
             };
         });
@@ -936,7 +1004,6 @@ async function handleButton(interaction) {
         });
 
     } else if (customId === 'admin_manage_admins') {
-        // ─── إدارة المسؤولين ───
         if (interaction.user.id !== process.env.OWNER_ID) {
             return interaction.reply({ content: '❌ فقط مالك البوت يقدر يدير المسؤولين!', ephemeral: true });
         }
@@ -958,7 +1025,6 @@ async function handleButton(interaction) {
         });
 
     } else if (customId === 'admin_bot_settings') {
-        // ─── إعدادات البوت ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
@@ -980,7 +1046,6 @@ async function handleButton(interaction) {
         });
 
     } else if (customId === 'admin_game_settings') {
-        // ─── إعدادات اللعبة ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
@@ -1028,52 +1093,11 @@ async function handleButton(interaction) {
             ephemeral: true
         });
 
-    } else if (customId === 'admin_manage_emojis') {
-        // ─── إدارة إيموجيات السيرفر ───
-        if (!isAdmin(interaction.user.id)) {
-            return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
-        }
-
-        const currentEmojis = config.emojis || {};
-        const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId('select_emoji_type')
-            .setPlaceholder('اختر نوع البطاقة لتغيير إيموجيه...')
-            .addOptions([
-                {
-                    label: `عيدية — الإيموجي الحالي: ${currentEmojis.eidiya || '🎁'}`,
-                    value: 'eidiya',
-                    description: 'تغيير إيموجي بطاقة العيدية'
-                },
-                {
-                    label: `تحدي — الإيموجي الحالي: ${currentEmojis.challenge || '⚡'}`,
-                    value: 'challenge',
-                    description: 'تغيير إيموجي بطاقة التحدي'
-                },
-                {
-                    label: `عقوبة — الإيموجي الحالي: ${currentEmojis.punishment || '💀'}`,
-                    value: 'punishment',
-                    description: 'تغيير إيموجي بطاقة العقوبة'
-                }
-            ]);
-
-        await interaction.reply({
-            embeds: [
-                new EmbedBuilder()
-                    .setTitle('إيموجيات السيرفر')
-                    .setDescription('اختر نوع البطاقة وأدخل إيموجي السيرفر الخاص بك.\n\n**كيف تحصل على إيموجي السيرفر؟**\nاكتب `\\:اسم_الإيموجي:` في أي قناة وأرسله، ستظهر لك القيمة مثل:\n`<:emoji_name:123456789>`\nانسخ هذه القيمة كاملة وأدخلها.')
-                    .setColor(0x5865F2)
-            ],
-            components: [new ActionRowBuilder().addComponents(selectMenu)],
-            ephemeral: true
-        });
-
     } else if (customId === 'admin_refresh_panel') {
-        // ─── تحديث لوحة الأدمن ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
 
-        // تحديث الرسالة الحالية
         const panel = buildAdminPanel();
         try {
             await interaction.update(panel);
@@ -1082,12 +1106,10 @@ async function handleButton(interaction) {
         }
 
     } else if (customId === 'admin_reset_all') {
-        // ─── إعادة تعيين البطاقات ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
 
-        // تأكيد
         const confirmRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId('confirm_reset_yes')
@@ -1106,7 +1128,6 @@ async function handleButton(interaction) {
         });
 
     } else if (customId === 'confirm_reset_yes') {
-        // تأكيد إعادة التعيين
         cardsData.cards = [];
         saveCards();
 
@@ -1115,7 +1136,6 @@ async function handleButton(interaction) {
             components: []
         });
 
-        // تحديث لوحة الأدمن
         await refreshAdminPanel();
 
     } else if (customId === 'confirm_reset_no') {
@@ -1129,29 +1149,24 @@ async function handleButton(interaction) {
     // ══════════════════════════════════
 
     } else if (customId === 'game_join') {
-        // ─── انضمام لاعب ───
         if (gameState.phase !== 'registration') {
             return interaction.reply({ content: '❌ التسجيل مغلق!', ephemeral: true });
         }
 
-        // التحقق هل اللاعب مسجل من قبل
         if (gameState.players.find(p => p.id === interaction.user.id)) {
             return interaction.reply({ content: '❌ أنت مسجل بالفعل!', ephemeral: true });
         }
 
-        // إضافة اللاعب
         gameState.players.push({
             id: interaction.user.id,
             username: interaction.user.username,
             displayName: interaction.member?.displayName || interaction.user.username
         });
 
-        // تحديث embed التسجيل
         const regData = buildRegistrationEmbed(interaction.guild);
         await interaction.update(regData);
 
     } else if (customId === 'game_leave') {
-        // ─── انسحاب لاعب ───
         if (gameState.phase !== 'registration') {
             return interaction.reply({ content: '❌ لا يمكن الانسحاب الآن!', ephemeral: true });
         }
@@ -1167,7 +1182,6 @@ async function handleButton(interaction) {
         await interaction.update(regData);
 
     } else if (customId === 'game_start') {
-        // ─── بدء اللعبة (مسؤول فقط) ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ فقط المسؤول يقدر يبدأ اللعبة!', ephemeral: true });
         }
@@ -1180,21 +1194,17 @@ async function handleButton(interaction) {
             return interaction.reply({ content: '❌ يحتاج على الأقل 2 لاعبين!', ephemeral: true });
         }
 
-        // تجهيز البطاقات — خلط عشوائي
         const cardCount = Math.min(config.gameSettings.cardCount, cardsData.cards.length);
         if (cardCount === 0) {
             return interaction.reply({ content: '❌ لا توجد بطاقات متوفرة!', ephemeral: true });
         }
 
-        // خلط البطاقات واختيار العدد المطلوب
         gameState.availableCards = shuffleArray([...cardsData.cards]).slice(0, cardCount);
-        // خلط اللاعبين
         gameState.players = shuffleArray(gameState.players);
         gameState.currentPlayerIndex = 0;
         gameState.phase = 'playing';
         gameState.drawnCards = [];
 
-        // إرسال رسالة البدء
         await interaction.update({
             embeds: [
                 new EmbedBuilder()
@@ -1205,38 +1215,31 @@ async function handleButton(interaction) {
             components: []
         });
 
-        // روليت اختيار اللاعب الأول
         await playPlayerRouletteAnimation(
             interaction.channel,
             gameState.players,
             gameState.currentPlayerIndex
         );
 
-        // إرسال embed الدور الأول
         const turnData = buildPlayerTurnEmbed();
         gameState.gameMessage = await interaction.channel.send(turnData);
 
-        // تشغيل المؤقت
         startExecutionTimer();
 
     } else if (customId === 'game_draw') {
-        // ─── سحب بطاقة ───
         if (gameState.phase !== 'playing' || gameState.paused) {
             return interaction.reply({ content: '❌ اللعبة غير متاحة حالياً!', ephemeral: true });
         }
 
         const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
-        // التحقق إن هذا دور اللاعب الصحيح
         if (interaction.user.id !== currentPlayer.id) {
-            // التحقق هل هو مسجل أصلاً
             if (!gameState.players.find(p => p.id === interaction.user.id)) {
                 return interaction.reply({ content: '❌ أنت غير مسجل في اللعبة!', ephemeral: true });
             }
             return interaction.reply({ content: '❌ مو دورك! انتظر دورك 😊', ephemeral: true });
         }
 
-        // التحقق من وجود بطاقات
         if (gameState.availableCards.length === 0) {
             await endGame();
             return interaction.reply({ content: '❌ البطاقات خلصت!', ephemeral: true });
@@ -1245,24 +1248,20 @@ async function handleButton(interaction) {
         await interaction.deferUpdate();
         clearExecutionTimer();
 
-        // سحب البطاقة أولاً عشان العجلة تعرف النتيجة
         const drawnCard = gameState.availableCards.pop();
 
-        // تشغيل عجلة الروليت بالنتيجة الصحيحة
         const animMsg = await playDrawAnimation(
             interaction.channel,
             currentPlayer.displayName || currentPlayer.username,
             drawnCard.type
         );
 
-        // حذف البطاقة من البيانات الأصلية
         const originalIndex = cardsData.cards.findIndex(c => c.id === drawnCard.id);
         if (originalIndex !== -1) {
             cardsData.cards.splice(originalIndex, 1);
             saveCards();
         }
 
-        // تسجيل السحبة
         gameState.drawnCards.push({
             playerId: currentPlayer.id,
             playerName: currentPlayer.displayName || currentPlayer.username,
@@ -1270,7 +1269,6 @@ async function handleButton(interaction) {
             timestamp: Date.now()
         });
 
-        // في وضع الضغط المضاعف — سحب بطاقة ثانية
         let secondCard = null;
         if (gameState.doubleMode && gameState.availableCards.length > 0) {
             secondCard = gameState.availableCards.pop();
@@ -1287,7 +1285,6 @@ async function handleButton(interaction) {
             });
         }
 
-        // تحديث رسالة الأنيميشن بالبطاقة
         const cardEmbed = buildCardEmbed(drawnCard, currentPlayer.displayName || currentPlayer.username);
         const embeds = [cardEmbed];
 
@@ -1299,11 +1296,9 @@ async function handleButton(interaction) {
             await animMsg.edit({ embeds, components: [] });
         } catch (e) { }
 
-        // تحديث embed الدور
         await updateGameMessage();
 
     } else if (customId === 'game_next') {
-        // ─── الانتقال للتالي (مسؤول) ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
@@ -1315,7 +1310,6 @@ async function handleButton(interaction) {
         await moveToNextPlayer();
 
     } else if (customId === 'game_skip') {
-        // ─── تخطي (مسؤول) ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
@@ -1327,7 +1321,6 @@ async function handleButton(interaction) {
         await skipToNextPlayer();
 
     } else if (customId === 'game_pause') {
-        // ─── إيقاف/استمرار (مسؤول) ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
@@ -1357,12 +1350,10 @@ async function handleButton(interaction) {
             });
         }
 
-        // تحديث الأزرار
         await updateGameMessage();
         try { await interaction.deferUpdate(); } catch (e) { }
 
     } else if (customId === 'game_double') {
-        // ─── وضع الضغط المضاعف (مسؤول) ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
@@ -1382,7 +1373,6 @@ async function handleButton(interaction) {
         try { await interaction.deferUpdate(); } catch (e) { }
 
     } else if (customId === 'game_end') {
-        // ─── إنهاء اللعبة (مسؤول) ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
@@ -1391,12 +1381,10 @@ async function handleButton(interaction) {
         await endGame();
 
     } else if (customId === 'game_new_round') {
-        // ─── جولة جديدة ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         }
 
-        // إعادة تعيين حالة اللعبة
         gameState = {
             ...gameState,
             active: true,
@@ -1423,28 +1411,7 @@ async function handleButton(interaction) {
 async function handleSelectMenu(interaction) {
     const customId = interaction.customId;
 
-    if (customId === 'select_emoji_type') {
-        // ─── اختيار نوع البطاقة لتغيير إيموجيه ───
-        const selectedType = interaction.values[0];
-        const typeLabel = CARD_TYPES[selectedType].label;
-
-        const modal = new ModalBuilder()
-            .setCustomId(`modal_set_emoji_${selectedType}`)
-            .setTitle(`إيموجي ${typeLabel}`);
-
-        const emojiInput = new TextInputBuilder()
-            .setCustomId('emoji_value')
-            .setLabel(`أدخل إيموجي ${typeLabel} من سيرفرك`)
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('مثال: <:my_emoji:123456789012345678>')
-            .setValue(config.emojis?.[selectedType] || '')
-            .setRequired(true);
-
-        modal.addComponents(new ActionRowBuilder().addComponents(emojiInput));
-        await interaction.showModal(modal);
-
-    } else if (customId === 'select_card_type_for_add') {
-        // ─── اختيار نوع البطاقة ثم فتح Modal ───
+    if (customId === 'select_card_type_for_add') {
         const selectedType = interaction.values[0];
 
         const modal = new ModalBuilder()
@@ -1475,7 +1442,6 @@ async function handleSelectMenu(interaction) {
         await interaction.showModal(modal);
 
     } else if (customId === 'select_card_delete') {
-        // ─── حذف البطاقات المختارة ───
         const selectedIds = interaction.values;
         let deleted = 0;
 
@@ -1500,7 +1466,6 @@ async function handleSelectMenu(interaction) {
         const action = interaction.values[0];
 
         if (action === 'add_admin') {
-            // إضافة مسؤول — Modal لإدخال ID
             const modal = new ModalBuilder()
                 .setCustomId('modal_add_admin')
                 .setTitle('إضافة مسؤول جديد');
@@ -1566,7 +1531,6 @@ async function handleSelectMenu(interaction) {
         }
 
     } else if (customId === 'select_admin_remove') {
-        // حذف مسؤول
         const adminId = interaction.values[0];
         const index = config.admins.indexOf(adminId);
 
@@ -1579,7 +1543,6 @@ async function handleSelectMenu(interaction) {
                 components: []
             });
 
-            // نقل الصلاحيات للمسؤول التالي تلقائياً
             if (config.admins.length > 0) {
                 console.log(`📋 المسؤول التالي: ${config.admins[0]}`);
             }
@@ -1620,7 +1583,6 @@ async function handleSelectMenu(interaction) {
         const setting = interaction.values[0];
 
         if (setting === 'mute_mode') {
-            // تبديل وضع الكتمان
             config.gameSettings.muteMode = !config.gameSettings.muteMode;
             saveConfig();
             await interaction.update({
@@ -1630,7 +1592,6 @@ async function handleSelectMenu(interaction) {
             await refreshAdminPanel();
 
         } else if (setting === 'dm_reminder') {
-            // تبديل DM تذكير
             config.gameSettings.dmReminder = !config.gameSettings.dmReminder;
             saveConfig();
             await interaction.update({
@@ -1640,7 +1601,6 @@ async function handleSelectMenu(interaction) {
             await refreshAdminPanel();
 
         } else if (setting === 'show_stats') {
-            // تبديل الإحصائيات
             config.gameSettings.showStats = !config.gameSettings.showStats;
             saveConfig();
             await interaction.update({
@@ -1650,7 +1610,6 @@ async function handleSelectMenu(interaction) {
             await refreshAdminPanel();
 
         } else {
-            // فتح Modal للإعدادات الرقمية والنصية
             const modal = new ModalBuilder()
                 .setCustomId(`modal_game_setting_${setting}`)
                 .setTitle(
@@ -1677,7 +1636,6 @@ async function handleSelectMenu(interaction) {
             modal.addComponents(new ActionRowBuilder().addComponents(input));
             await interaction.showModal(modal);
         }
-
     }
 }
 
@@ -1688,7 +1646,6 @@ async function handleModal(interaction) {
     const customId = interaction.customId;
 
     if (customId.startsWith('modal_add_card_')) {
-        // ─── إضافة بطاقة جديدة ───
         const cardType = customId.replace('modal_add_card_', '');
         const cardName = interaction.fields.getTextInputValue('card_name');
         const cardDescription = interaction.fields.getTextInputValue('card_description');
@@ -1712,7 +1669,7 @@ async function handleModal(interaction) {
                     .setColor(typeInfo.color)
                     .addFields(
                         { name: '📝 الاسم', value: cardName, inline: true },
-                        { name: '🎴 النوع', value: `${typeInfo.emoji} ${typeInfo.label}`, inline: true },
+                        { name: '🎴 النوع', value: `${typeInfo.label}`, inline: true },
                         { name: '📄 الوصف', value: cardDescription, inline: false }
                     )
             ],
@@ -1722,10 +1679,8 @@ async function handleModal(interaction) {
         await refreshAdminPanel();
 
     } else if (customId === 'modal_add_admin') {
-        // ─── إضافة مسؤول ───
         const adminId = interaction.fields.getTextInputValue('admin_id').trim();
 
-        // التحقق من صحة الـ ID
         if (!/^\d{17,20}$/.test(adminId)) {
             return interaction.reply({ content: '❌ ID غير صحيح! أدخل ID ديسكورد صحيح.', ephemeral: true });
         }
@@ -1738,7 +1693,6 @@ async function handleModal(interaction) {
             return interaction.reply({ content: '❌ هذا هو مالك البوت!', ephemeral: true });
         }
 
-        // التحقق من وجود المستخدم
         try {
             const user = await client.users.fetch(adminId);
             config.admins.push(adminId);
@@ -1755,17 +1709,14 @@ async function handleModal(interaction) {
         await refreshAdminPanel();
 
     } else if (customId.startsWith('modal_bot_setting_')) {
-        // ─── إعدادات البوت ───
         const setting = customId.replace('modal_bot_setting_', '');
         const value = interaction.fields.getTextInputValue('setting_value');
 
         if (setting === 'bot_name') {
             config.botName = value;
-            // تغيير اسم البوت في ديسكورد
             try {
                 await client.user.setUsername(value);
             } catch (e) {
-                // قد يفشل بسبب rate limit
                 console.log('⚠️ لم يتم تغيير اسم البوت في ديسكورد (rate limit)');
             }
         } else if (setting === 'bot_status') {
@@ -1785,7 +1736,6 @@ async function handleModal(interaction) {
         await refreshAdminPanel();
 
     } else if (customId.startsWith('modal_game_setting_')) {
-        // ─── إعدادات اللعبة ───
         const setting = customId.replace('modal_game_setting_', '');
         const value = interaction.fields.getTextInputValue('setting_value');
 
@@ -1815,21 +1765,6 @@ async function handleModal(interaction) {
         });
 
         await refreshAdminPanel();
-    } else if (customId.startsWith('modal_set_emoji_')) {
-        // ─── حفظ إيموجي السيرفر ───
-        const type = customId.replace('modal_set_emoji_', '');
-        const emojiValue = interaction.fields.getTextInputValue('emoji_value').trim();
-
-        if (!config.emojis) config.emojis = {};
-        config.emojis[type] = emojiValue;
-        saveConfig();
-
-        await interaction.reply({
-            content: `تم تحديث إيموجي **${CARD_TYPES[type]?.label}** إلى ${emojiValue}`,
-            ephemeral: true
-        });
-
-        await refreshAdminPanel();
     }
 }
 
@@ -1843,7 +1778,6 @@ async function refreshAdminPanel() {
         const panel = buildAdminPanel();
         await gameState.adminPanelMessage.edit(panel);
     } catch (e) {
-        // لو الرسالة انحذفت، نرسل وحدة جديدة
         try {
             const adminChannel = await client.channels.fetch(config.adminChannelId);
             if (adminChannel) {
@@ -1868,7 +1802,6 @@ async function updateGameMessage() {
     try {
         await gameState.gameMessage.edit(turnData);
     } catch (e) {
-        // لو الرسالة انحذفت نرسل وحدة جديدة
         try {
             gameState.gameMessage = await gameState.gameChannel.send(turnData);
         } catch (err) { }
@@ -1879,14 +1812,12 @@ async function updateGameMessage() {
 // 👋 عند خروج عضو من السيرفر
 // ═══════════════════════════════════════════════════════════════
 client.on('guildMemberRemove', async (member) => {
-    // لو العضو مسؤول، ننقل الصلاحيات
     const adminIndex = config.admins.indexOf(member.id);
     if (adminIndex !== -1) {
         config.admins.splice(adminIndex, 1);
         saveConfig();
         console.log(`👋 المسؤول ${member.user.tag} طلع من السيرفر — تم حذفه من القائمة`);
 
-        // إشعار في قناة الأدمن
         try {
             const adminChannel = await client.channels.fetch(config.adminChannelId);
             if (adminChannel) {
@@ -1905,18 +1836,15 @@ client.on('guildMemberRemove', async (member) => {
         await refreshAdminPanel();
     }
 
-    // لو اللاعب في لعبة شغالة
     if (gameState.active) {
         const playerIndex = gameState.players.findIndex(p => p.id === member.id);
         if (playerIndex !== -1) {
             gameState.players.splice(playerIndex, 1);
 
-            // تعديل المؤشر لو لزم
             if (gameState.currentPlayerIndex >= gameState.players.length) {
                 gameState.currentPlayerIndex = 0;
             }
 
-            // لو ما بقى لاعبين كافيين
             if (gameState.players.length < 2 && gameState.phase === 'playing') {
                 await endGame();
             } else {
