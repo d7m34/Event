@@ -531,6 +531,17 @@ async function handleButton(interaction) {
             await gameState.gameChannel.send({ embeds: [new EmbedBuilder().setTitle('❌ فشل التحدي').setDescription(`<@${player.id}> فشل في التحدي وتم اقصاؤه من الجولة`).setColor(0xE74C3C).setFooter({ text: 'روليت البطاقات' })] });
         } catch (e) { }
 
+        // رسالة خاصة للاعب بالخاص
+        try {
+            const failedUser = await client.users.fetch(player.id);
+            await failedUser.send({ embeds: [new EmbedBuilder()
+                .setTitle('شكراً على مشاركتك! 🌟')
+                .setDescription('للأسف ما نجحت في التحدي هذه المرة، بس مشاركتك كانت رائعة — حظ أوفر في الفعالية القادمة! 🎴')
+                .setColor(0x5865F2)
+                .setFooter({ text: 'روليت البطاقات' })
+                .setTimestamp()] });
+        } catch (e) { }
+
         gameState.pendingChallengePlayer = null;
         gameState.pendingChallengeCard = null;
         gameState.currentPlayerDrew = true;
