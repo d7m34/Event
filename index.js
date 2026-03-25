@@ -1,4 +1,5 @@
 
+
 // ═══════════════════════════════════════════════════════════════
 // 🎴 بوت Card Roulette - روليت البطاقات
 // بوت ديسكورد متكامل لفعاليات البطاقات العشوائية
@@ -10,12 +11,10 @@ const {
     StringSelectMenuBuilder, ModalBuilder, TextInputBuilder,
     TextInputStyle, PermissionFlagsBits, ActivityType,
     SlashCommandBuilder, REST, Routes, ComponentType,
-    ChannelType, AttachmentBuilder
+    ChannelType
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const { Canvas } = require('skia-canvas');
-function createCanvas(w, h) { return new Canvas(w, h); }
 
 // ─── تحميل الملفات ───
 const configPath = path.join(__dirname, 'config.json');
@@ -543,303 +542,108 @@ async function endGame() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// رسم عجلة الروليت كصورة PNG بـ canvas
+// روليت 1 — اختيار اللاعب التالي (أنيميشن نصي)
 // ═══════════════════════════════════════════════════════════════
-
-function drawWheel(segments, highlightIndex, rotationOffset = 0) {
-    const SIZE = 500;
-    const cx = SIZE / 2;
-    const cy = SIZE / 2;
-    const radius = 220;
-    const canvas = createCanvas(SIZE, SIZE);
-    const ctx = canvas.getContext('2d');
-
-    const count = segments.length;
-    const sliceAngle = (2 * Math.PI) / count;
-
-    // خلفية داكنة
-    ctx.fillStyle = '#1e1e2e';
-    ctx.fillRect(0, 0, SIZE, SIZE);
-
-    // رسم الأقسام
-    for (let i = 0; i < count; i++) {
-        const startAngle = rotationOffset + i * sliceAngle - Math.PI / 2;
-        const endAngle = startAngle + sliceAngle;
-        const seg = segments[i];
-
-        // لون القسم
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.arc(cx, cy, radius, startAngle, endAngle);
-        ctx.closePath();
-
-        const isHighlighted = i === highlightIndex % count;
-        ctx.fillStyle = isHighlighted ? seg.activeColor : seg.color;
-        ctx.fill();
-
-        // حدود بيضاء
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-
-        // النص
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(startAngle + sliceAngle / 2);
-        ctx.textAlign = 'right';
-        ctx.fillStyle = isHighlighted ? '#ffffff' : '#dddddd';
-        ctx.font = `bold ${Math.max(14, Math.floor(280 / count))}px Arial`;
-        ctx.fillText(seg.label, radius - 15, 6);
-        ctx.restore();
-    }
-
-    // دائرة مركزية
-    ctx.beginPath();
-    ctx.arc(cx, cy, 28, 0, 2 * Math.PI);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
-    ctx.strokeStyle = '#888888';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // مؤشر أعلى العجلة
-    ctx.beginPath();
-    ctx.moveTo(cx - 16, 10);
-    ctx.lineTo(cx + 16, 10);
-    ctx.lineTo(cx, 48);
-    ctx.closePath();
-    ctx.fillStyle = '#ff4444';
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    return canvas.toBufferSync('png');
-}
-
-// ─── روليت 1: اختيار اللاعب ───
 async function playPlayerRouletteAnimation(channel, players, resultIndex) {
     const resultPlayer = players[resultIndex];
-    const count = players.length;
 
-    const COLORS = [
-        { color: '#3498db', activeColor: '#1a6fc4', label: '' },
-        { color: '#e74c3c', activeColor: '#c0392b', label: '' },
-        { color: '#2ecc71', activeColor: '#27ae60', label: '' },
-        { color: '#9b59b6', activeColor: '#7d3c98', label: '' },
-        { color: '#f39c12', activeColor: '#d68910', label: '' },
-        { color: '#1abc9c', activeColor: '#17a589', label: '' },
-        { color: '#e67e22', activeColor: '#ca6f1e', label: '' },
-        { color: '#e91e63', activeColor: '#c2185b', label: '' },
-    ];
+    function buildRow(highlightIdx) {
+        const visible = players.slice(0, Math.min(players.length, 6));
+        return visible.map((p, i) => {
+            const name = (p.displayName || p.username).substring(0, 10);
+            return i === highlightIdx % visible.length ? `**[ ${name} ]**` : name;
+        }).join('  •  ');
+    }
 
-    const segments = players.map((p, i) => ({
-        label: (p.displayName || p.username).substring(0, 12),
-        color: COLORS[i % COLORS.length].color,
-        activeColor: COLORS[i % COLORS.length].activeColor
-    }));
-
-    const sliceAngle = (2 * Math.PI) / count;
-
-    // حساب زاوية النتيجة بحيث توقف المؤشر على القسم الصحيح
-    const targetAngle = -(resultIndex * sliceAngle) + Math.PI / 2 - sliceAngle / 2;
-    const fullSpins = 4 * 2 * Math.PI;
-    const finalAngle = fullSpins + targetAngle;
-
-    // إطارات الدوران
-    const totalFrames = 18;
-    const fastFrames = 12;
-
-    // رسالة أولى
-    const firstBuf = drawWheel(segments, -1, 0);
-    const firstAttach = new AttachmentBuilder(firstBuf, { name: 'wheel.png' });
     const animMsg = await channel.send({
-        embeds: [
-            new EmbedBuilder()
-                .setTitle('عجلة الاختيار تدور...')
-                .setImage('attachment://wheel.png')
-                .setColor(0x2F3136)
-                .setFooter({ text: 'روليت البطاقات' })
-        ],
-        files: [firstAttach]
+        embeds: [new EmbedBuilder()
+            .setTitle('عجلة الاختيار تدور...')
+            .setDescription(`من سيكون اللاعب التالي؟\n\n${buildRow(0)}\n\n▲  ▲  ▲`)
+            .setColor(0x2F3136).setFooter({ text: 'روليت البطاقات' })]
     });
 
-    // إطارات سريعة
-    for (let f = 1; f <= fastFrames; f++) {
-        const progress = f / totalFrames;
-        const ease = progress < 0.6
-            ? progress / 0.6
-            : 1 - ((progress - 0.6) / 0.4) * 0.5;
-        const currentAngle = finalAngle * ease;
-        const currentSeg = Math.floor((-currentAngle + Math.PI / 2) / sliceAngle + count * 10) % count;
-
-        await delay(f <= 8 ? 200 : f <= 12 ? 350 : 500);
-        try {
-            const buf = drawWheel(segments, currentSeg, currentAngle);
-            const attach = new AttachmentBuilder(buf, { name: 'wheel.png' });
-            await animMsg.edit({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle('عجلة الاختيار تدور...')
-                        .setImage('attachment://wheel.png')
-                        .setColor(0x2F3136)
-                        .setFooter({ text: 'روليت البطاقات' })
-                ],
-                files: [attach]
-            });
-        } catch (e) { }
+    for (let i = 0; i < 10; i++) {
+        await delay(200);
+        try { await animMsg.edit({ embeds: [new EmbedBuilder()
+            .setTitle('عجلة الاختيار تدور...')
+            .setDescription(`من سيكون اللاعب التالي؟\n\n${buildRow(i)}\n\n▲  ▲  ▲`)
+            .setColor(0x2F3136).setFooter({ text: 'روليت البطاقات' })] }); } catch(e) {}
     }
 
-    // إطارات تبطؤ
-    for (let f = fastFrames + 1; f <= totalFrames; f++) {
-        const progress = f / totalFrames;
-        const ease = 1 - Math.pow(1 - progress, 2);
-        const currentAngle = finalAngle * ease;
-
-        await delay(700 + (f - fastFrames) * 150);
-        try {
-            const buf = drawWheel(segments, resultIndex, currentAngle);
-            const attach = new AttachmentBuilder(buf, { name: 'wheel.png' });
-            await animMsg.edit({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle('العجلة تتباطأ...')
-                        .setImage('attachment://wheel.png')
-                        .setColor(0x5865F2)
-                        .setFooter({ text: 'روليت البطاقات' })
-                ],
-                files: [attach]
-            });
-        } catch (e) { }
+    const slowSpeeds = [350, 500, 700, 900, 1100];
+    for (let s = 0; s < slowSpeeds.length; s++) {
+        await delay(slowSpeeds[s]);
+        try { await animMsg.edit({ embeds: [new EmbedBuilder()
+            .setTitle('العجلة تتباطأ...')
+            .setDescription(`من سيكون اللاعب التالي؟\n\n${buildRow(10 + s)}\n\n▲  ▲  ▲`)
+            .setColor(0x5865F2).setFooter({ text: 'روليت البطاقات' })] }); } catch(e) {}
     }
 
-    // النتيجة النهائية
-    await delay(500);
-    try {
-        const finalBuf = drawWheel(segments, resultIndex, finalAngle);
-        const finalAttach = new AttachmentBuilder(finalBuf, { name: 'wheel.png' });
-        await animMsg.edit({
-            embeds: [
-                new EmbedBuilder()
-                    .setTitle('تم الاختيار!')
-                    .setDescription(`**${resultPlayer.displayName || resultPlayer.username}**\nهذا دوره الآن — دوّر عجلة البطاقة!`)
-                    .setImage('attachment://wheel.png')
-                    .setColor(0xFFD700)
-                    .setFooter({ text: 'روليت البطاقات' })
-            ],
-            files: [finalAttach]
-        });
-    } catch (e) { }
+    await delay(600);
+    try { await animMsg.edit({ embeds: [new EmbedBuilder()
+        .setTitle('تم الاختيار!')
+        .setDescription(`**${resultPlayer.displayName || resultPlayer.username}**\n\nهذا دوره الآن — دوّر عجلة البطاقة!`)
+        .setColor(0xFFD700).setFooter({ text: 'روليت البطاقات' })] }); } catch(e) {}
 
     await delay(800);
     return animMsg;
 }
 
-// ─── روليت 2: اختيار نوع البطاقة ───
+// ═══════════════════════════════════════════════════════════════
+// روليت 2 — اختيار نوع البطاقة (أنيميشن نصي)
+// ═══════════════════════════════════════════════════════════════
 async function playDrawAnimation(channel, playerName, resultType) {
-    const typeSegments = [
-        { key: 'eidiya',     label: 'عيدية', color: '#c8a200', activeColor: '#FFD700' },
-        { key: 'challenge',  label: 'تحدي',  color: '#1a5fa8', activeColor: '#3498DB' },
-        { key: 'punishment', label: 'عقوبة', color: '#a93226', activeColor: '#E74C3C' },
-    ];
+    const allTypes = ['eidiya', 'challenge', 'punishment'];
+    const segColors = { eidiya: '🟡', challenge: '🔵', punishment: '🔴' };
+    const segLabels = { eidiya: 'عيدية', challenge: 'تحدي', punishment: 'عقوبة' };
 
-    const count = typeSegments.length;
-    const resultIndex = typeSegments.findIndex(s => s.key === resultType);
-    const safeIndex = resultIndex !== -1 ? resultIndex : 0;
+    function buildCardRow(highlightType) {
+        return allTypes.map(t =>
+            t === highlightType
+                ? `**[ ${segColors[t]} ${segLabels[t]} ]**`
+                : `${segColors[t]} ${segLabels[t]}`
+        ).join('  •  ');
+    }
 
-    const sliceAngle = (2 * Math.PI) / count;
-    const targetAngle = -(safeIndex * sliceAngle) + Math.PI / 2 - sliceAngle / 2;
-    const fullSpins = 5 * 2 * Math.PI;
-    const finalAngle = fullSpins + targetAngle;
-
-    const totalFrames = 16;
-    const fastFrames = 10;
-
-    // رسالة أولى
-    const firstBuf = drawWheel(typeSegments, -1, 0);
-    const firstAttach = new AttachmentBuilder(firstBuf, { name: 'wheel.png' });
     const animMsg = await channel.send({
-        embeds: [
-            new EmbedBuilder()
-                .setTitle('عجلة البطاقة تدور...')
-                .setDescription(`${playerName} يدور العجلة`)
-                .setImage('attachment://wheel.png')
-                .setColor(0x2F3136)
-                .setFooter({ text: 'روليت البطاقات' })
-        ],
-        files: [firstAttach]
+        embeds: [new EmbedBuilder()
+            .setTitle('عجلة البطاقة تدور...')
+            .setDescription(`${playerName} يدور العجلة\n\n${buildCardRow('eidiya')}\n\n▲  ▲  ▲`)
+            .setColor(0x2F3136).setFooter({ text: 'روليت البطاقات' })]
     });
 
-    // إطارات سريعة
-    for (let f = 1; f <= fastFrames; f++) {
-        const progress = f / totalFrames;
-        const currentAngle = finalAngle * (progress / 0.65);
-        const currentSeg = Math.floor((-currentAngle + Math.PI / 2) / sliceAngle + count * 10) % count;
-
-        await delay(f <= 6 ? 250 : 400);
-        try {
-            const buf = drawWheel(typeSegments, currentSeg, currentAngle);
-            const attach = new AttachmentBuilder(buf, { name: 'wheel.png' });
-            await animMsg.edit({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle('عجلة البطاقة تدور...')
-                        .setDescription(`${playerName} يدور العجلة`)
-                        .setImage('attachment://wheel.png')
-                        .setColor(0x2F3136)
-                        .setFooter({ text: 'روليت البطاقات' })
-                ],
-                files: [attach]
-            });
-        } catch (e) { }
+    const fastSeq = ['eidiya','challenge','punishment','eidiya','challenge','punishment','eidiya','challenge'];
+    for (const pos of fastSeq) {
+        await delay(300);
+        try { await animMsg.edit({ embeds: [new EmbedBuilder()
+            .setTitle('عجلة البطاقة تدور...')
+            .setDescription(`${playerName} يدور العجلة\n\n${buildCardRow(pos)}\n\n▲  ▲  ▲`)
+            .setColor(0x2F3136).setFooter({ text: 'روليت البطاقات' })] }); } catch(e) {}
     }
 
-    // إطارات تبطؤ
-    for (let f = fastFrames + 1; f <= totalFrames; f++) {
-        const t = (f - fastFrames) / (totalFrames - fastFrames);
-        const ease = 1 - Math.pow(1 - t, 3);
-        const currentAngle = finalAngle * (0.65 + ease * 0.35);
+    const resultIdx = allTypes.indexOf(resultType) !== -1 ? allTypes.indexOf(resultType) : 0;
+    const slowPath = [allTypes[(resultIdx+1)%3], allTypes[(resultIdx+2)%3], allTypes[resultIdx]];
+    const slowSpeeds = [600, 900, 1200];
 
-        await delay(600 + (f - fastFrames) * 200);
-        try {
-            const buf = drawWheel(typeSegments, safeIndex, currentAngle);
-            const attach = new AttachmentBuilder(buf, { name: 'wheel.png' });
-            await animMsg.edit({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle('العجلة تتباطأ...')
-                        .setDescription(`${playerName} يدور العجلة`)
-                        .setImage('attachment://wheel.png')
-                        .setColor(0x5865F2)
-                        .setFooter({ text: 'روليت البطاقات' })
-                ],
-                files: [attach]
-            });
-        } catch (e) { }
+    for (let i = 0; i < slowPath.length; i++) {
+        await delay(slowSpeeds[i]);
+        try { await animMsg.edit({ embeds: [new EmbedBuilder()
+            .setTitle('العجلة تتباطأ...')
+            .setDescription(`${playerName} يدور العجلة\n\n${buildCardRow(slowPath[i])}\n\n▲  ▲  ▲`)
+            .setColor(0x5865F2).setFooter({ text: 'روليت البطاقات' })] }); } catch(e) {}
     }
 
-    // النتيجة
     const resultInfo = CARD_TYPES[resultType] || CARD_TYPES.punishment;
-    await delay(500);
-    try {
-        const finalBuf = drawWheel(typeSegments, safeIndex, finalAngle);
-        const finalAttach = new AttachmentBuilder(finalBuf, { name: 'wheel.png' });
-        await animMsg.edit({
-            embeds: [
-                new EmbedBuilder()
-                    .setTitle('توقفت العجلة!')
-                    .setDescription(`${playerName}\n\n**${resultInfo.label}**`)
-                    .setImage('attachment://wheel.png')
-                    .setColor(resultInfo.color)
-                    .setFooter({ text: 'روليت البطاقات' })
-            ],
-            files: [finalAttach]
-        });
-    } catch (e) { }
+    await delay(600);
+    try { await animMsg.edit({ embeds: [new EmbedBuilder()
+        .setTitle('توقفت العجلة!')
+        .setDescription(`${playerName}\n\n**${segColors[resultType] || '⚪'} ${segLabels[resultType] || resultType}**`)
+        .setColor(resultInfo.color).setFooter({ text: 'روليت البطاقات' })] }); } catch(e) {}
 
     await delay(800);
     return animMsg;
 }
+
 
 // ═══════════════════════════════════════════════════════════════
 // 📝 تسجيل الأوامر Slash
