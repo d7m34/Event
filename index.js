@@ -14,7 +14,8 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const { createCanvas } = require('canvas');
+const { Canvas } = require('skia-canvas');
+function createCanvas(w, h) { return new Canvas(w, h); }
 
 // ─── تحميل الملفات ───
 const configPath = path.join(__dirname, 'config.json');
@@ -613,7 +614,7 @@ function drawWheel(segments, highlightIndex, rotationOffset = 0) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    return canvas.toBuffer('image/png');
+    return canvas.toBufferSync('png');
 }
 
 // ─── روليت 1: اختيار اللاعب ───
