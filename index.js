@@ -112,11 +112,9 @@ function delay(ms) {
 // 🔍 استخراج أول إيموجي من نص
 // ═══════════════════════════════════════════════════════════════
 function extractEmoji(text) {
-    // أولاً: إيموجي مخصص (custom emoji) عادي أو متحرك
     const customMatch = text.match(/<a?:\w+:\d+>/);
     if (customMatch) return customMatch[0];
 
-    // ثانياً: إيموجي Unicode
     const emojiRegex = /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F))*/u;
     const unicodeMatch = text.match(emojiRegex);
     if (unicodeMatch) return unicodeMatch[0];
@@ -157,7 +155,6 @@ function buildAdminPanel() {
         .setFooter({ text: 'روليت البطاقات — لوحة التحكم' })
         .setTimestamp();
 
-    // ─── صف أزرار البطاقات ───
     const cardsRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('admin_add_card')
@@ -173,7 +170,6 @@ function buildAdminPanel() {
             .setStyle(ButtonStyle.Danger)
     );
 
-    // ─── صف أزرار المسؤولين ───
     const adminsRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('admin_manage_admins')
@@ -189,7 +185,6 @@ function buildAdminPanel() {
             .setStyle(ButtonStyle.Secondary)
     );
 
-    // ─── صف أزرار إضافي (بدون زر الإيموجيات) ───
     const extraRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('admin_refresh_panel')
@@ -337,7 +332,6 @@ function buildCardEmbed(card, playerName) {
         punishment: 'عقوبة — عليك تنفيذ هذه العقوبة!'
     };
 
-    // استخدام card.emoji قبل اسم البطاقة إن كان موجوداً
     const cardTitle = card.emoji ? `${card.emoji} ${card.name}` : card.name;
 
     const embed = new EmbedBuilder()
@@ -527,7 +521,7 @@ async function endGame() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// روليت 1 — اختيار اللاعب التالي (أنيميشن نصي)
+// روليت 1 — اختيار اللاعب التالي
 // ═══════════════════════════════════════════════════════════════
 async function playPlayerRouletteAnimation(channel, players, resultIndex) {
     const resultPlayer = players[resultIndex];
@@ -575,7 +569,7 @@ async function playPlayerRouletteAnimation(channel, players, resultIndex) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// روليت 2 — اختيار نوع البطاقة (أنيميشن نصي)
+// روليت 2 — اختيار نوع البطاقة
 // ═══════════════════════════════════════════════════════════════
 async function playDrawAnimation(channel, playerName, resultType) {
     const allTypes = ['eidiya', 'challenge', 'punishment'];
@@ -703,27 +697,22 @@ client.once('ready', async () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// 🎯 التعامل مع التفاعلات (أزرار، قوائم، نوافذ)
+// 🎯 التعامل مع التفاعلات
 // ═══════════════════════════════════════════════════════════════
 client.on('interactionCreate', async (interaction) => {
     try {
-        // ─── Autocomplete للأمر /ايموجي ───
         if (interaction.isAutocomplete()) {
             await handleAutocomplete(interaction);
         }
-        // ─── أوامر Slash ───
         else if (interaction.isChatInputCommand()) {
             await handleSlashCommand(interaction);
         }
-        // ─── أزرار ───
         else if (interaction.isButton()) {
             await handleButton(interaction);
         }
-        // ─── قوائم اختيار ───
         else if (interaction.isStringSelectMenu()) {
             await handleSelectMenu(interaction);
         }
-        // ─── نوافذ Modal ───
         else if (interaction.isModalSubmit()) {
             await handleModal(interaction);
         }
@@ -844,14 +833,12 @@ async function handleSlashCommand(interaction) {
         await interaction.reply({ content: '✅ تم إعادة تعيين اللعبة! استخدم /بدء لبدء جولة جديدة.', ephemeral: true });
 
     } else if (commandName === 'ايموجي') {
-        // ─── أمر /ايموجي — تعيين إيموجي لبطاقة ───
         if (!isAdmin(interaction.user.id)) {
             return interaction.reply({ content: '❌ هذا الأمر للمسؤولين فقط!', ephemeral: true });
         }
 
         const cardId = interaction.options.getString('بطاقة');
 
-        // البحث عن البطاقة
         const card = cardsData.cards.find(c => c.id === cardId);
         if (!card) {
             return interaction.reply({ content: '❌ لم يتم العثور على البطاقة! تأكد من اختيار بطاقة صحيحة.', ephemeral: true });
@@ -864,7 +851,6 @@ async function handleSlashCommand(interaction) {
             ephemeral: true
         });
 
-        // انتظار رسالة من نفس المستخدم في نفس القناة
         const filter = (msg) => msg.author.id === interaction.user.id;
 
         try {
@@ -878,7 +864,6 @@ async function handleSlashCommand(interaction) {
             const message = collected.first();
             const emoji = extractEmoji(message.content);
 
-            // حذف رسالة المستخدم لتنظيف القناة
             try { await message.delete(); } catch (e) { }
 
             if (!emoji) {
@@ -888,7 +873,6 @@ async function handleSlashCommand(interaction) {
                 });
             }
 
-            // حفظ الإيموجي على البطاقة
             card.emoji = emoji;
             saveCards();
 
@@ -898,7 +882,6 @@ async function handleSlashCommand(interaction) {
             });
 
         } catch (err) {
-            // انتهى الوقت
             await interaction.followUp({
                 content: '⏱️ انتهى الوقت! لم يتم تعيين إيموجي. استخدم الأمر مرة ثانية.',
                 ephemeral: true
@@ -912,10 +895,6 @@ async function handleSlashCommand(interaction) {
 // ═══════════════════════════════════════════════════════════════
 async function handleButton(interaction) {
     const customId = interaction.customId;
-
-    // ══════════════════════════════════
-    // 🔐 أزرار لوحة الأدمن
-    // ══════════════════════════════════
 
     if (customId === 'admin_add_card') {
         if (!isAdmin(interaction.user.id)) {
@@ -981,7 +960,6 @@ async function handleButton(interaction) {
         }
 
         const options = cardsData.cards.slice(0, 25).map(card => {
-            const typeInfo = CARD_TYPES[card.type] || {};
             return {
                 label: card.name.substring(0, 100),
                 value: card.id,
@@ -1035,7 +1013,10 @@ async function handleButton(interaction) {
             .addOptions([
                 { label: '📝 تغيير اسم البوت', value: 'bot_name', emoji: '📝' },
                 { label: '🎮 تغيير الستاتس', value: 'bot_status', emoji: '🎮' },
-                { label: '📄 تغيير البايو', value: 'bot_bio', emoji: '📄' }
+                { label: '📄 تغيير البايو', value: 'bot_bio', emoji: '📄' },
+                { label: '🖼️ تغيير أفتار البوت', value: 'bot_avatar', emoji: '🖼️' },
+                { label: '🎨 تغيير بنر البوت', value: 'bot_banner', emoji: '🎨' },
+                { label: '📢 تغيير قناة الأدمن', value: 'admin_channel', emoji: '📢' }
             ]);
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -1143,10 +1124,6 @@ async function handleButton(interaction) {
             content: '❌ تم إلغاء إعادة التعيين.',
             components: []
         });
-
-    // ══════════════════════════════════
-    // 🎮 أزرار اللعبة
-    // ══════════════════════════════════
 
     } else if (customId === 'game_join') {
         if (gameState.phase !== 'registration') {
@@ -1553,6 +1530,37 @@ async function handleSelectMenu(interaction) {
     } else if (customId === 'select_bot_setting') {
         const setting = interaction.values[0];
 
+        // ─── الأفتار والبنر وقناة الأدمن ───
+        if (setting === 'bot_avatar' || setting === 'bot_banner' || setting === 'admin_channel') {
+            const modal = new ModalBuilder()
+                .setCustomId(`modal_bot_setting_${setting}`)
+                .setTitle(
+                    setting === 'bot_avatar' ? 'تغيير أفتار البوت' :
+                    setting === 'bot_banner' ? 'تغيير بنر البوت' :
+                    'تغيير قناة الأدمن'
+                );
+
+            const input = new TextInputBuilder()
+                .setCustomId('setting_value')
+                .setLabel(
+                    setting === 'bot_avatar' ? 'رابط صورة الأفتار' :
+                    setting === 'bot_banner' ? 'رابط صورة البنر' :
+                    'أدخل ID القناة الجديدة'
+                )
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder(
+                    setting === 'bot_avatar' ? 'https://example.com/avatar.png' :
+                    setting === 'bot_banner' ? 'https://example.com/banner.png' :
+                    'مثال: 123456789012345678'
+                )
+                .setRequired(true);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(input));
+            await interaction.showModal(modal);
+            return;
+        }
+
+        // ─── باقي الإعدادات (الاسم، الستاتس، البايو) ───
         const modal = new ModalBuilder()
             .setCustomId(`modal_bot_setting_${setting}`)
             .setTitle(
@@ -1710,7 +1718,7 @@ async function handleModal(interaction) {
 
     } else if (customId.startsWith('modal_bot_setting_')) {
         const setting = customId.replace('modal_bot_setting_', '');
-        const value = interaction.fields.getTextInputValue('setting_value');
+        const value = interaction.fields.getTextInputValue('setting_value').trim();
 
         if (setting === 'bot_name') {
             config.botName = value;
@@ -1719,19 +1727,98 @@ async function handleModal(interaction) {
             } catch (e) {
                 console.log('⚠️ لم يتم تغيير اسم البوت في ديسكورد (rate limit)');
             }
+            saveConfig();
+            await interaction.reply({
+                content: `✅ تم تغيير اسم البوت إلى: **${value}**`,
+                ephemeral: true
+            });
+
         } else if (setting === 'bot_status') {
             config.botStatus = value;
             client.user.setActivity(value, { type: ActivityType.Playing });
+            saveConfig();
+            await interaction.reply({
+                content: `✅ تم تغيير الستاتس إلى: **${value}**`,
+                ephemeral: true
+            });
+
         } else if (setting === 'bot_bio') {
             config.botBio = value;
+            saveConfig();
+            await interaction.reply({
+                content: `✅ تم تغيير البايو إلى: **${value}**`,
+                ephemeral: true
+            });
+
+        } else if (setting === 'bot_avatar') {
+            try {
+                await client.user.setAvatar(value);
+                await interaction.reply({
+                    content: `✅ تم تغيير أفتار البوت بنجاح!`,
+                    ephemeral: true
+                });
+            } catch (e) {
+                await interaction.reply({
+                    content: `❌ فشل تغيير الأفتار!\n**السبب:** ${e.message}\n\n💡 تأكد أن الرابط صحيح وينتهي بـ .png أو .jpg أو .gif\n⏱️ ديسكورد يسمح بتغيير الأفتار مرتين كل ساعة`,
+                    ephemeral: true
+                });
+            }
+
+        } else if (setting === 'bot_banner') {
+            try {
+                await client.user.setBanner(value);
+                await interaction.reply({
+                    content: `✅ تم تغيير بنر البوت بنجاح!`,
+                    ephemeral: true
+                });
+            } catch (e) {
+                await interaction.reply({
+                    content: `❌ فشل تغيير البنر!\n**السبب:** ${e.message}\n\n💡 تأكد أن الرابط صحيح وينتهي بـ .png أو .jpg`,
+                    ephemeral: true
+                });
+            }
+
+        } else if (setting === 'admin_channel') {
+            if (!/^\d{17,20}$/.test(value)) {
+                return interaction.reply({
+                    content: '❌ ID القناة غير صحيح! أدخل ID قناة صحيح.',
+                    ephemeral: true
+                });
+            }
+
+            try {
+                const newChannel = await client.channels.fetch(value);
+
+                if (!newChannel || !newChannel.isTextBased()) {
+                    return interaction.reply({
+                        content: '❌ القناة غير موجودة أو ليست قناة نصية!',
+                        ephemeral: true
+                    });
+                }
+
+                if (gameState.adminPanelMessage) {
+                    try { await gameState.adminPanelMessage.delete(); } catch (e) { }
+                }
+
+                const oldChannelId = config.adminChannelId;
+                config.adminChannelId = value;
+                saveConfig();
+
+                const panel = buildAdminPanel();
+                gameState.adminPanelMessage = await newChannel.send(panel);
+
+                await interaction.reply({
+                    content: `✅ تم نقل قناة الأدمن!\n\n📢 **القناة القديمة:** <#${oldChannelId}>\n📢 **القناة الجديدة:** <#${value}>\n\n📋 تم إرسال لوحة التحكم في القناة الجديدة.`,
+                    ephemeral: true
+                });
+
+            } catch (e) {
+                await interaction.reply({
+                    content: `❌ فشل تغيير القناة!\n**السبب:** ${e.message}\n\n💡 تأكد أن ID القناة صحيح والبوت يقدر يرسل فيها.`,
+                    ephemeral: true
+                });
+            }
         }
-
-        saveConfig();
-
-        await interaction.reply({
-            content: `✅ تم تحديث الإعداد بنجاح!\n**القيمة الجديدة:** ${value}`,
-            ephemeral: true
-        });
 
         await refreshAdminPanel();
 
