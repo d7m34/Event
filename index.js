@@ -39,7 +39,8 @@ const CARD_TYPES = {
 let gameState = {
     active: false, paused: false, phase: 'idle', players: [], currentPlayerIndex: 0,
     availableCards: [], drawnCards: [], doubleMode: false, gameChannel: null,
-    gameMessage: null, registrationMessage: null, timerInterval: null, adminPanelMessage: null
+    gameMessage: null, registrationMessage: null, timerInterval: null, adminPanelMessage: null,
+    currentPlayerDrew: false, initialEidiyaCount: 0
 };
 
 let broadcastState = {
@@ -73,6 +74,10 @@ function buildProgressBar(current, total, length = 20) {
     const filled = Math.round((current / total) * length);
     const empty = length - filled;
     return '█'.repeat(filled) + '░'.repeat(empty) + ` ${percentage}%`;
+}
+
+function getRemainingEidiyaCount() {
+    return gameState.availableCards.filter(c => c.type === 'eidiya').length;
 }
 
 function buildBroadcastStatusEmbed() {
@@ -193,20 +198,29 @@ function buildRegistrationEmbed(guild) {
 function buildPlayerTurnEmbed() {
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
     if (!currentPlayer) return null;
+    const remainingEidiya = getRemainingEidiyaCount();
     const embed = new EmbedBuilder()
         .setTitle('دور اللاعب').setDescription(`<@${currentPlayer.id}>\n\nاسحب البطاقة الآن وادر العجلة`).setColor(0x3498DB)
         .addFields(
-            { name: 'التقدم', value: `تبقى **${gameState.availableCards.length}/${config.gameSettings.cardCount}** بطاقة`, inline: true },
+            { name: 'التقدم', value: `تبقى **${gameState.availableCards.length}** بطاقة`, inline: true },
             { name: 'الدور', value: `**${gameState.currentPlayerIndex + 1}/${gameState.players.length}**`, inline: true },
-            { name: 'المؤقت', value: `**${config.gameSettings.executionTimer}** ثانية`, inline: true }
-        ).setFooter({ text: gameState.doubleMode ? 'وضع الضغط المضاعف مفعّل!' : 'روليت البطاقات' }).setTimestamp();
+            { name: 'المؤقت', value: `**${config.gameSettings.executionTimer}** ثانية`, inline: true },
+            { name: '🎁 عيديات متبقية', value: `**${remainingEidiya}/${gameState.initialEidiyaCount}**`, inline: true },
+            { name: '👥 لاعبين متبقين', value: `**${gameState.players.length}**`, inline: true }
+        ).setFooter({ text: 'روليت البطاقات — كل لاعب يسحب بطاقة وحدة' }).setTimestamp();
+
+    const drawButton = new ButtonBuilder()
+        .setCustomId('game_draw')
+        .setLabel('دوّر العجلة')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(gameState.currentPlayerDrew);
+
     return { embeds: [embed], components: [
-        new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('game_draw').setLabel('دوّر العجلة').setStyle(ButtonStyle.Primary)),
+        new ActionRowBuilder().addComponents(drawButton),
         new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('game_next').setLabel('التالي').setStyle(ButtonStyle.Success),
             new ButtonBuilder().setCustomId('game_skip').setLabel('تخطي').setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId('game_pause').setLabel(gameState.paused ? 'استمرار' : 'ايقاف').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('game_double').setLabel(gameState.doubleMode ? 'الغاء x2' : 'x2 مضاعف').setStyle(gameState.doubleMode ? ButtonStyle.Danger : ButtonStyle.Primary),
             new ButtonBuilder().setCustomId('game_end').setLabel('انهاء').setStyle(ButtonStyle.Danger)
         )
     ]};
@@ -227,11 +241,11 @@ function buildSummaryEmbed() {
     const embed = new EmbedBuilder().setTitle('انتهت الجولة — الملخص').setColor(0xFFD700)
         .addFields(
             { name: '📊 إحصائيات البطاقات', value: Object.entries(stats).filter(([, count]) => count > 0).map(([type, count]) => `${CARD_TYPES[type].label}: **${count}**`).join('\n') || 'لا توجد بطاقات مسحوبة', inline: true },
-            { name: '👥 اللاعبين', value: `**${gameState.players.length}** لاعب شارك`, inline: true },
+            { name: '👥 اللاعبين', value: `**${gameState.drawnCards.length}** لاعب شارك`, inline: true },
             { name: '🎴 البطاقات المسحوبة', value: `**${gameState.drawnCards.length}** بطاقة`, inline: true }
         ).setTimestamp();
     if (gameState.drawnCards.length > 0) {
-        embed.addFields({ name: '📜 آخر السحبات', value: gameState.drawnCards.slice(-15).map((d, i) => `\`${i + 1}\` <@${d.playerId}> ← ${d.card.emoji ? d.card.emoji + ' ' : '❓ '}**${d.card.name}**`).join('\n'), inline: false });
+        embed.addFields({ name: '📜 سجل السحبات', value: gameState.drawnCards.slice(-15).map((d, i) => `\`${i + 1}\` <@${d.playerId}> ← ${d.card.emoji ? d.card.emoji + ' ' : '❓ '}**${d.card.name}**`).join('\n'), inline: false });
     }
     return { embeds: [embed], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('game_new_round').setLabel('جولة جديدة').setStyle(ButtonStyle.Success))] };
 }
@@ -247,9 +261,24 @@ function clearExecutionTimer() { if (gameState.timerInterval) { clearInterval(ga
 
 async function moveToNextPlayer() {
     clearExecutionTimer();
+
+    // اللاعب الحالي سحب بطاقته — نشيله من القائمة
+    if (gameState.currentPlayerDrew && gameState.players.length > 0) {
+        gameState.players.splice(gameState.currentPlayerIndex, 1);
+        // نعدّل الـ index بعد الحذف
+        if (gameState.players.length === 0) { await endGame(); return; }
+        if (gameState.currentPlayerIndex >= gameState.players.length) gameState.currentPlayerIndex = 0;
+    } else {
+        // ما سحب (تخطي) — ننتقل للتالي بدون حذف
+        gameState.currentPlayerIndex++;
+        if (gameState.currentPlayerIndex >= gameState.players.length) gameState.currentPlayerIndex = 0;
+    }
+
     if (gameState.availableCards.length === 0) { await endGame(); return; }
-    gameState.currentPlayerIndex++;
-    if (gameState.currentPlayerIndex >= gameState.players.length) gameState.currentPlayerIndex = 0;
+    if (gameState.players.length === 0) { await endGame(); return; }
+
+    gameState.currentPlayerDrew = false;
+
     if (gameState.gameChannel) await playPlayerRouletteAnimation(gameState.gameChannel, gameState.players, gameState.currentPlayerIndex);
     const turnData = buildPlayerTurnEmbed();
     if (turnData && gameState.gameMessage) { try { await gameState.gameMessage.edit(turnData); } catch (e) { if (gameState.gameChannel) gameState.gameMessage = await gameState.gameChannel.send(turnData); } }
@@ -260,7 +289,19 @@ async function moveToNextPlayer() {
 async function skipToNextPlayer() {
     if (!gameState.active || !gameState.gameChannel) return;
     try { const sp = gameState.players[gameState.currentPlayerIndex]; await gameState.gameChannel.send({ embeds: [new EmbedBuilder().setDescription(`تم تخطي <@${sp.id}> — انتهى الوقت!`).setColor(0x95A5A6)] }); } catch (e) { }
-    await moveToNextPlayer();
+    // التخطي — اللاعب ما سحب، نتركه بالقائمة وننتقل
+    gameState.currentPlayerDrew = false;
+    clearExecutionTimer();
+    gameState.currentPlayerIndex++;
+    if (gameState.currentPlayerIndex >= gameState.players.length) gameState.currentPlayerIndex = 0;
+
+    if (gameState.availableCards.length === 0 || gameState.players.length === 0) { await endGame(); return; }
+
+    if (gameState.gameChannel) await playPlayerRouletteAnimation(gameState.gameChannel, gameState.players, gameState.currentPlayerIndex);
+    const turnData = buildPlayerTurnEmbed();
+    if (turnData && gameState.gameMessage) { try { await gameState.gameMessage.edit(turnData); } catch (e) { if (gameState.gameChannel) gameState.gameMessage = await gameState.gameChannel.send(turnData); } }
+    startExecutionTimer();
+    if (config.gameSettings.dmReminder) { const cp = gameState.players[gameState.currentPlayerIndex]; try { const user = await client.users.fetch(cp.id); await user.send({ embeds: [new EmbedBuilder().setTitle('🎴 دورك الآن!').setDescription('دورك في روليت البطاقات! روح القناة واسحب بطاقتك 🃏').setColor(0xFFD700)] }); } catch (e) { } }
 }
 
 async function endGame() {
@@ -355,7 +396,7 @@ async function handleSlashCommand(interaction) {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
         if (gameState.active) return interaction.reply({ content: '❌ فيه لعبة شغالة!', ephemeral: true });
         if (cardsData.cards.length === 0) return interaction.reply({ content: '❌ لا توجد بطاقات!', ephemeral: true });
-        gameState = { ...gameState, active: true, paused: false, phase: 'registration', players: [], currentPlayerIndex: 0, availableCards: [], drawnCards: [], doubleMode: false, gameChannel: interaction.channel, gameMessage: null, registrationMessage: null, timerInterval: null };
+        gameState = { ...gameState, active: true, paused: false, phase: 'registration', players: [], currentPlayerIndex: 0, availableCards: [], drawnCards: [], doubleMode: false, gameChannel: interaction.channel, gameMessage: null, registrationMessage: null, timerInterval: null, currentPlayerDrew: false, initialEidiyaCount: 0 };
         await interaction.reply(buildRegistrationEmbed(interaction.guild));
         gameState.registrationMessage = await interaction.fetchReply();
     } else if (commandName === 'لوحة') {
@@ -365,7 +406,7 @@ async function handleSlashCommand(interaction) {
         await interaction.reply({ embeds: [new EmbedBuilder().setTitle('❓ مساعدة Card Roulette').setDescription('بوت فعاليات البطاقات العشوائية').setColor(0x3498DB).addFields({ name: '🎴 `/بدء`', value: 'بدء فعالية جديدة', inline: true }, { name: '🎛️ `/لوحة`', value: 'لوحة التحكم', inline: true }, { name: '🎨 `/ايموجي`', value: 'تعيين إيموجي لبطاقة', inline: true }, { name: '❓ `/مساعدة`', value: 'هذه الرسالة', inline: true }, { name: '🎴 أنواع البطاقات', value: Object.values(CARD_TYPES).map(t => `**${t.label}**`).join('\n'), inline: false }).setFooter({ text: config.botBio || 'Card Roulette Bot' })], ephemeral: true });
     } else if (commandName === 'إعادة') {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
-        clearExecutionTimer(); gameState.active = false; gameState.phase = 'idle'; gameState.players = []; gameState.gameMessage = null; gameState.registrationMessage = null; gameState.timerInterval = null;
+        clearExecutionTimer(); gameState.active = false; gameState.phase = 'idle'; gameState.players = []; gameState.gameMessage = null; gameState.registrationMessage = null; gameState.timerInterval = null; gameState.currentPlayerDrew = false;
         await interaction.reply({ content: '✅ تم إعادة تعيين اللعبة!', ephemeral: true });
     } else if (commandName === 'ايموجي') {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين فقط!', ephemeral: true });
@@ -459,25 +500,51 @@ async function handleButton(interaction) {
         if (gameState.players.length < 2) return interaction.reply({ content: '❌ يحتاج 2 لاعبين!', ephemeral: true });
         const cc = Math.min(config.gameSettings.cardCount, cardsData.cards.length);
         if (cc === 0) return interaction.reply({ content: '❌ لا بطاقات!', ephemeral: true });
-        gameState.availableCards = shuffleArray([...cardsData.cards]).slice(0, cc); gameState.players = shuffleArray(gameState.players);
+        gameState.availableCards = shuffleArray([...cardsData.cards]).slice(0, cc);
+        gameState.initialEidiyaCount = gameState.availableCards.filter(c => c.type === 'eidiya').length;
+        gameState.players = shuffleArray(gameState.players);
         gameState.currentPlayerIndex = 0; gameState.phase = 'playing'; gameState.drawnCards = [];
-        await interaction.update({ embeds: [new EmbedBuilder().setTitle('اللعبة بدأت!').setDescription(`لاعبين: **${gameState.players.length}**\nبطاقات: **${gameState.availableCards.length}**`).setColor(0x2ECC71)], components: [] });
+        gameState.currentPlayerDrew = false;
+        await interaction.update({ embeds: [new EmbedBuilder().setTitle('اللعبة بدأت!').setDescription(`لاعبين: **${gameState.players.length}**\nبطاقات: **${gameState.availableCards.length}**\nعيديات: **${gameState.initialEidiyaCount}**`).setColor(0x2ECC71)], components: [] });
         await playPlayerRouletteAnimation(interaction.channel, gameState.players, gameState.currentPlayerIndex);
         gameState.gameMessage = await interaction.channel.send(buildPlayerTurnEmbed()); startExecutionTimer();
     } else if (id === 'game_draw') {
         if (gameState.phase !== 'playing' || gameState.paused) return interaction.reply({ content: '❌ غير متاحة!', ephemeral: true });
         const cp = gameState.players[gameState.currentPlayerIndex];
         if (interaction.user.id !== cp.id) { if (!gameState.players.find(p => p.id === interaction.user.id)) return interaction.reply({ content: '❌ غير مسجل!', ephemeral: true }); return interaction.reply({ content: '❌ مو دورك!', ephemeral: true }); }
+        if (gameState.currentPlayerDrew) return interaction.reply({ content: '❌ سحبت بطاقتك بالفعل! انتظر الأدمن يضغط "التالي"', ephemeral: true });
         if (gameState.availableCards.length === 0) { await endGame(); return interaction.reply({ content: '❌ خلصت البطاقات!', ephemeral: true }); }
         await interaction.deferUpdate(); clearExecutionTimer();
         const dc = gameState.availableCards.pop();
-        const am = await playDrawAnimation(interaction.channel, cp.displayName || cp.username, dc.type);
-        const oi = cardsData.cards.findIndex(c => c.id === dc.id); if (oi !== -1) { cardsData.cards.splice(oi, 1); saveCards(); }
+
+        // إذا كانت آخر عيدية — رسالة خاصة
+        if (dc.type === 'eidiya') {
+            const remainingEidiyaAfter = gameState.availableCards.filter(c => c.type === 'eidiya').length;
+            if (remainingEidiyaAfter === 0 && getRemainingEidiyaCount() <= 1) {
+                try { await gameState.gameChannel.send({ embeds: [new EmbedBuilder().setTitle('🔥 آخر عيدية تم سحبها!').setDescription(`<@${cp.id}> حصل على **آخر عيدية** متبقية!\nما فيه عيديات بعد كذا 😱`).setColor(0xFF6B6B).setFooter({ text: 'روليت البطاقات' })] }); } catch (e) { }
+            }
+        }
+
+        // العيديات تُحذف نهائياً — التحديات والعقوبات ترجع
+        if (dc.type === 'eidiya') {
+            // العيدية تُحذف من cards.json نهائياً
+            const oi = cardsData.cards.findIndex(c => c.id === dc.id);
+            if (oi !== -1) { cardsData.cards.splice(oi, 1); saveCards(); }
+        } else {
+            // التحدي أو العقوبة — نرجعها لـ availableCards عشان تتكرر
+            gameState.availableCards.unshift(dc);
+            gameState.availableCards = shuffleArray(gameState.availableCards);
+        }
+
         gameState.drawnCards.push({ playerId: cp.id, playerName: cp.displayName || cp.username, card: dc, timestamp: Date.now() });
-        let sc = null;
-        if (gameState.doubleMode && gameState.availableCards.length > 0) { sc = gameState.availableCards.pop(); const si = cardsData.cards.findIndex(c => c.id === sc.id); if (si !== -1) { cardsData.cards.splice(si, 1); saveCards(); } gameState.drawnCards.push({ playerId: cp.id, playerName: cp.displayName || cp.username, card: sc, timestamp: Date.now() }); }
-        const embeds = [buildCardEmbed(dc, cp.displayName || cp.username)]; if (sc) embeds.push(buildCardEmbed(sc, `${cp.displayName || cp.username} (x2)`));
-        try { await am.edit({ embeds, components: [] }); } catch (e) { } await updateGameMessage();
+
+        const am = await playDrawAnimation(interaction.channel, cp.displayName || cp.username, dc.type);
+        const embeds = [buildCardEmbed(dc, cp.displayName || cp.username)];
+        try { await am.edit({ embeds, components: [] }); } catch (e) { }
+
+        // اللاعب سحب بطاقته — نعلّم إنه سحب
+        gameState.currentPlayerDrew = true;
+        await updateGameMessage();
     } else if (id === 'game_next') {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين!', ephemeral: true });
         if (gameState.phase !== 'playing') return interaction.reply({ content: '❌ غير شغالة!', ephemeral: true });
@@ -485,7 +552,9 @@ async function handleButton(interaction) {
     } else if (id === 'game_skip') {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين!', ephemeral: true });
         if (gameState.phase !== 'playing') return interaction.reply({ content: '❌ غير شغالة!', ephemeral: true });
-        await interaction.deferUpdate(); await skipToNextPlayer();
+        await interaction.deferUpdate();
+        gameState.currentPlayerDrew = false;
+        await skipToNextPlayer();
     } else if (id === 'game_pause') {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين!', ephemeral: true });
         if (gameState.phase !== 'playing') return interaction.reply({ content: '❌ غير شغالة!', ephemeral: true });
@@ -493,17 +562,12 @@ async function handleButton(interaction) {
         if (gameState.paused) { clearExecutionTimer(); await interaction.channel.send({ embeds: [new EmbedBuilder().setTitle('اللعبة متوقفة مؤقتاً').setColor(0xF39C12)] }); }
         else { startExecutionTimer(); await interaction.channel.send({ embeds: [new EmbedBuilder().setTitle('اللعبة مستمرة!').setColor(0x2ECC71)] }); }
         await updateGameMessage(); try { await interaction.deferUpdate(); } catch (e) { }
-    } else if (id === 'game_double') {
-        if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين!', ephemeral: true });
-        gameState.doubleMode = !gameState.doubleMode;
-        await interaction.channel.send({ embeds: [new EmbedBuilder().setTitle(gameState.doubleMode ? '⚡ مضاعف مفعّل!' : '✖️ مضاعف معطّل').setDescription(gameState.doubleMode ? 'يسحب بطاقتين!' : 'بطاقة وحدة').setColor(gameState.doubleMode ? 0xE74C3C : 0x95A5A6)] });
-        await updateGameMessage(); try { await interaction.deferUpdate(); } catch (e) { }
     } else if (id === 'game_end') {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين!', ephemeral: true });
         await interaction.deferUpdate(); await endGame();
     } else if (id === 'game_new_round') {
         if (!isAdmin(interaction.user.id)) return interaction.reply({ content: '❌ للمسؤولين!', ephemeral: true });
-        gameState = { ...gameState, active: true, paused: false, phase: 'registration', players: [], currentPlayerIndex: 0, availableCards: [], drawnCards: [], doubleMode: false, gameChannel: interaction.channel, timerInterval: null };
+        gameState = { ...gameState, active: true, paused: false, phase: 'registration', players: [], currentPlayerIndex: 0, availableCards: [], drawnCards: [], doubleMode: false, gameChannel: interaction.channel, timerInterval: null, currentPlayerDrew: false, initialEidiyaCount: 0 };
         await interaction.update(buildRegistrationEmbed(interaction.guild)); gameState.registrationMessage = await interaction.fetchReply();
     }
 }
